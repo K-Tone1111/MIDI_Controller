@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>MIDI Designer - v61</title>
+    <style>
+        :root { --grid: 20px; }
+        body { font-family: 'Courier New', Courier, monospace; background: #1a1a1a; color: white; margin: 0; overflow: hidden; touch-action: none; }
+        #canvas { width: 100vw; height: 100vh; position: relative; z-index: 1; }
+        .layout-mode-active #canvas { background-image: linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px); background-size: var(--grid) var(--grid); }
+        
+        .midi-unit { position: absolute; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; box-sizing: border-box; border-radius: 4px; background: #222; border: 1px solid transparent; }
+        .layout-mode-active .midi-unit { border: 1px dashed rgba(255,255,255,0.4); }
+        .layout-mode-active .midi-unit.selected { border: 2px solid #00ffff !important; box-shadow: 0 0 15px rgba(0,255,255,0.5); z-index: 500; }
+        #selection-box { position: absolute; border: 1px solid #00ffff; background: rgba(0, 255, 255, 0.1); pointer-events: none; display: none; z-index: 10000; }
+
+        .pad-inner { width: calc(100% - 12px); height: calc(100% - 12px); background: var(--pad-color, #444); border-radius: 4px; box-shadow: inset 0 2px 4px rgba(255,255,255,0.1), 0 4px 8px rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; transition: transform 0.05s, background 0.05s, box-shadow 0.05s; position: relative; flex-shrink: 0; }
+        .shape-circle .pad-inner { border-radius: 50%; }
+        .midi-unit:active .pad-inner { transform: scale(0.94) translateY(2px); background: var(--pad-active-color, #666); box-shadow: inset 0 1px 2px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.3); }
+
+        .unit-label { font-size: 14px; font-weight: bold; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); pointer-events: none; text-align: center; width: 90%; word-break: break-all; z-index: 60; position: absolute; }
+        .slider-unit .unit-label { bottom: 4px; left: 6px; font-size: 10px; color: #ccc; text-align: left; width: auto; background: rgba(0,0,0,0.3); padding: 0 2px; position: absolute; top: auto; }
+
+        .slider-wrapper { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; position: relative; pointer-events: none; }
+        .midi-slider { appearance: none; -webkit-appearance: none; background: #000; border: 1px solid #444; outline: none; pointer-events: auto; z-index: 10; margin: 0; padding: 0; }
+        .midi-slider::-webkit-slider-thumb { appearance: none; background: var(--t-color, #fff); cursor: pointer; border: 2px solid #000; box-shadow: 0 0 0 2px var(--t-color, #fff); }
+        .t-fader::-webkit-slider-thumb { width: 16px; height: 32px; border-radius: 2px; }
+        .t-round::-webkit-slider-thumb { width: 24px; height: 24px; border-radius: 50%; }
+        .t-square::-webkit-slider-thumb { width: 24px; height: 24px; border-radius: 0; }
+        .t-diamond::-webkit-slider-thumb { width: 24px; height: 24px; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); border-radius: 0; }
+        .h-slider { height: 8px; }
+        .v-slider { height: 8px; transform: rotate(-90deg); position: absolute; }
+
+        .ticks-group { position: absolute; display: flex; justify-content: space-between; pointer-events: none; box-sizing: border-box; z-index: 5; }
+        .v-ticks { flex-direction: column-reverse; }
+        .h-ticks { flex-direction: row; }
+        .tick { background: #666; }
+        .tick.large { background: #fff; }
+        .v-ticks .tick { width: 100%; height: 1px; } 
+        .h-ticks .tick { height: 100%; width: 1px; } 
+
+        .cc-value-display { position: absolute; font-family: 'Courier New', Courier, monospace; font-size: 11px; font-weight: bold; color: #fff; background: #000; border: 1px solid #fff; padding: 2px 4px; z-index: 50; pointer-events: none; min-width: 24px; text-align: center; }
+
+        .menu-bar { position: fixed; top: 10px; left: 10px; z-index: 2000; display: flex; gap: 8px; }
+        .btn { cursor: pointer; border: 2px solid #555; background: #000; color: #fff; padding: 6px 12px; font-weight: bold; font-size: 11px; }
+        .panel { position: fixed; background: rgba(0,0,0,0.95); padding: 15px; border: 2px solid #fff; z-index: 3000; font-size: 11px; display: none; width: 190px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+        .panel label { display: block; margin-top: 10px; color: #888; font-size: 9px; }
+        .panel input, .panel select { width: 100%; background: #111; color: #fff; border: 1px solid #555; padding: 5px; box-sizing: border-box; margin-bottom: 4px; }
+
+        .delete-trigger, .edit-trigger, .resizer { position: absolute; width: 22px; height: 22px; display: none; align-items: center; justify-content: center; border: 2px solid #fff; z-index: 100; cursor: pointer; border-radius: 50%; }
+        .delete-trigger { top: -10px; left: -10px; background: #500; color: #fff; }
+        .delete-trigger::after { content: '×'; }
+        .edit-trigger { top: -10px; right: -10px; background: #000; color: #fff; }
+        .edit-trigger::after { content: '+'; }
+        .resizer { right: 0; bottom: 0; width: 16px; height: 16px; background: #fff; border: 2px solid #000; border-radius: 0; cursor: nwse-resize; z-index: 110; }
+        .layout-mode-active .edit-trigger, .layout-mode-active .delete-trigger, .layout-mode-active .resizer { display: flex; }
+    </style>
+</head>
+<body>
+
+    <div class="menu-bar">
+        <button class="btn" onclick="toggleLayoutMode()">EDIT MODE</button>
+        <button class="btn" onclick="togglePanel('globalSettings', event)">SETTINGS</button>
+        <div id="octDisplay" style="background:#000; border:2px solid #555; padding:6px 12px; font-size:11px; color:#fff; font-weight:bold; min-width:50px; text-align:center;">OCT: 0</div>
+    </div>
+
+    <div id="globalSettings" class="panel" style="top:60px; left:10px;" onmousedown="event.stopPropagation()">
+        <label>MIDI OUT DEVICE</label><select id="midiOutSelect" onchange="updateMidiOutput()"></select>
+        <label>GLOBAL MIDI CH</label><input type="number" id="globalCh" value="1" min="1" max="16" onchange="saveHistory()">
+        <hr style="border:1px solid #333; margin:10px 0;">
+        <button class="btn" onclick="addUnit('pad', 100, 100, 100, 100)" style="width:100%; margin-bottom:4px;">+ PAD</button>
+        <button class="btn" onclick="addUnit('slider', 200, 100, 60, 240, 1, {orient:'v', thumb:'fader'})" style="width:100%; margin-bottom:4px;">+ SLIDER</button>
+        <button class="btn" onclick="addUnit('oct-up', 320, 100, 60, 60, 0, {label:'OCT +'})" style="width:100%; margin-bottom:4px;">+ OCT UP</button>
+        <button class="btn" onclick="addUnit('oct-down', 320, 170, 60, 60, 0, {label:'OCT -'})" style="width:100%; margin-bottom:4px;">+ OCT DOWN</button>
+        <hr style="border:1px solid #333; margin:10px 0;">
+        <label>PRESETS</label>
+        <select id="presetSelect" style="width:100%; margin-bottom:4px;"></select>
+        <div style="display: flex; gap: 4px; margin-bottom: 4px;">
+            <button class="btn" onclick="loadPreset()" style="flex: 1;">LOAD</button>
+            <button class="btn" onclick="deletePreset()" style="flex: 1; background: #400;">DELETE</button>
+        </div>
+        <button class="btn" onclick="savePreset()" style="width:100%; background:#fff; color:#000; margin-bottom:4px;">SAVE AS NEW</button>
+        <hr style="border:1px solid #333; margin:10px 0;">
+        <button class="btn" onclick="clearCanvas()" style="width:100%; margin-top:4px; background:#500;">CLEAR CANVAS</button>
+        <button class="btn" onclick="closeAllPanels()" style="width:100%; margin-top:4px;">CLOSE</button>
+    </div>
+
+    <div id="unitPanel" class="panel" onmousedown="event.stopPropagation()">
+        <label>LABEL</label><input type="text" id="unitLabelInp">
+        <label>MIDI CH (0 = GLOBAL)</label><select id="unitChInp"><option value="0">GLOBAL</option></select>
+        <label>MIDI VAL</label><input type="number" id="unitValInp">
+        <label>BODY COLOR</label><input type="color" id="unitColorInp">
+        <div id="padOnly"><label>SHAPE</label><select id="unitShapeInp"><option value="square">SQUARE</option><option value="circle">CIRCLE</option></select></div>
+        <div id="sliderOnly">
+            <label>ORIENT</label><select id="unitOrientInp"><option value="v">VERTICAL</option><option value="h">HORIZONTAL</option></select>
+            <label>THUMB SHAPE</label><select id="unitThumbInp"><option value="fader">FADER</option><option value="round">ROUND</option><option value="square">SQUARE</option><option value="diamond">DIAMOND</option></select>
+            <label>THUMB COLOR</label><input type="color" id="unitThumbColorInp">
+            <label>SHOW VALUE</label><select id="unitShowValInp"><option value="off">OFF</option><option value="on">ON</option></select>
+        </div>
+        <button class="btn" onclick="closeAllPanels()" style="width:100%; margin-top:15px;">CLOSE</button>
+    </div>
+
+    <div id="canvas"></div>
+    <div id="selection-box"></div>
+
+    <script>
+        let midiAccess = null, midiOutput = null, isLayoutMode = false, activeUnit = null, globalOctave = 0, clipboard = [];
+        const GRID = 20, PRESET_PREFIX = 'midi_v47_';
+        const canvas = document.getElementById('canvas'), selectionBox = document.getElementById('selection-box');
+        let isSelecting = false, startX, startY;
+        
+        // 履歴管理スタック
+        let historyStack = [];
+        let redoStack = [];
+        const MAX_HISTORY = 50;
+
+        navigator.requestMIDIAccess().then(access => { midiAccess = access; refreshMidiDevices(); midiAccess.onstatechange = () => refreshMidiDevices(); });
+        function refreshMidiDevices() {
+            const select = document.getElementById('midiOutSelect'); if(!select) return;
+            const outputs = Array.from(midiAccess.outputs.values());
+            select.innerHTML = outputs.map(out => `<option value="${out.id}">${out.name}</option>`).join('') || '<option value="">No Devices</option>';
+            updateMidiOutput();
+        }
+        function updateMidiOutput() { const id = document.getElementById('midiOutSelect').value; midiOutput = id ? midiAccess.outputs.get(id) : null; }
+
+        const unitChInp = document.getElementById('unitChInp');
+        for(let i=1; i<=16; i++) { const opt = document.createElement('option'); opt.value = i; opt.innerText = `CH ${i}`; unitChInp.appendChild(opt); }
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (!isLayoutMode || e.target !== canvas) return;
+            isSelecting = true; startX = e.clientX; startY = e.clientY;
+            selectionBox.style.display = 'block';
+            if (!e.shiftKey) deselectAll();
+            closeAllPanels();
+        });
+        window.addEventListener('mousemove', (e) => {
+            if (!isSelecting) return;
+            const l = Math.min(startX, e.clientX), t = Math.min(startY, e.clientY), w = Math.abs(e.clientX - startX), h = Math.abs(e.clientY - startY);
+            selectionBox.style.left = l+'px'; selectionBox.style.top = t+'px'; selectionBox.style.width = w+'px'; selectionBox.style.height = h+'px';
+            document.querySelectorAll('.midi-unit').forEach(u => {
+                const r = u.getBoundingClientRect();
+                if (r.left < l + w && r.right > l && r.top < t + h && r.bottom > t) u.classList.add('selected');
+                else if (!e.shiftKey) u.classList.remove('selected');
+            });
+        });
+        window.addEventListener('mouseup', () => { isSelecting = false; selectionBox.style.display = 'none'; });
+        function deselectAll() { document.querySelectorAll('.midi-unit.selected').forEach(u => u.classList.remove('selected')); }
+
+        function addUnit(type, x, y, w, h, val=36, config={}, shouldSave=true) {
+            const unit = document.createElement('div');
+            unit.className = `midi-unit ${type}-unit`;
+            unit.style.cssText = `left:${x}px; top:${y}px; width:${w}px; height:${h}px;`;
+            unit.dataset.type = type; unit.dataset.val = val;
+            
+            let html = `<div class="unit-label"></div><div class="delete-trigger"></div><div class="edit-trigger"></div><div class="resizer"></div>`;
+            if (type === 'pad' || type.startsWith('oct')) html = `<div class="pad-inner"><div class="unit-label"></div></div>` + html;
+            else if (type === 'slider') html += `<div class="cc-value-display">0</div><div class="slider-wrapper"><div class="ticks-group side-a"></div><input type="range" class="midi-slider" min="0" max="127" value="0"><div class="ticks-group side-b"></div></div>`;
+            unit.innerHTML = html;
+
+            applyConfig(unit, config);
+
+            unit.onmousedown = (e) => {
+                e.stopPropagation();
+                if (e.target.classList.contains('delete-trigger')) { unit.remove(); saveHistory(); return; }
+                if (e.target.classList.contains('edit-trigger')) { openUnitPanel(unit); return; }
+                if (isLayoutMode) {
+                    if (!unit.classList.contains('selected') && !e.shiftKey) deselectAll();
+                    unit.classList.add('selected');
+                    if (e.target.classList.contains('resizer')) startResize(e, unit); else startMultiDrag(e);
+                } else handleMidiAction(unit, 'down');
+            };
+            if (type === 'pad' || type.startsWith('oct')) {
+                unit.onmouseup = unit.onmouseleave = () => handleMidiAction(unit, 'up');
+            }
+            if (type === 'slider') {
+                unit.querySelector('.midi-slider').oninput = (e) => {
+                    if(!isLayoutMode) {
+                        sendMidiFromUnit(unit, 0xB0, unit.dataset.val, e.target.value);
+                        unit.querySelector('.cc-value-display').innerText = e.target.value;
+                    }
+                };
+            }
+            canvas.appendChild(unit);
+            if (shouldSave) saveHistory();
+            return unit;
+        }
+
+        function handleMidiAction(unit, state) {
+            if (isLayoutMode || !midiOutput) return;
+            const type = unit.dataset.type;
+            if (type === 'pad') {
+                const note = parseInt(unit.dataset.val) + (globalOctave * 12);
+                sendMidiFromUnit(unit, state === 'down' ? 0x90 : 0x80, note, state === 'down' ? 100 : 0);
+            } else if (state === 'down') {
+                if (type === 'oct-up') globalOctave++;
+                if (type === 'oct-down') globalOctave--;
+                document.getElementById('octDisplay').innerText = `OCT: ${globalOctave}`;
+            }
+        }
+
+        function sendMidiFromUnit(unit, s, d1, d2) {
+            const cfg = JSON.parse(unit.dataset.config || '{}');
+            let ch = (cfg.ch && cfg.ch != 0) ? parseInt(cfg.ch) : parseInt(document.getElementById('globalCh').value);
+            midiOutput.send([s + (ch - 1), d1, d2]);
+        }
+
+        function applyConfig(unit, config) {
+            unit.dataset.val = config.val || unit.dataset.val;
+            const bodyColor = config.color || (unit.dataset.type.startsWith('oct') ? '#555555' : '#444444');
+            const inner = unit.querySelector('.pad-inner');
+            if (inner) {
+                unit.style.backgroundColor = '#222'; inner.style.setProperty('--pad-color', bodyColor);
+                inner.style.setProperty('--pad-active-color', shadeColor(bodyColor, 20));
+                unit.classList.toggle('shape-circle', config.shape === 'circle');
+            } else { unit.style.backgroundColor = bodyColor; }
+            unit.querySelector('.unit-label').innerText = config.label || '';
+            if (unit.dataset.type === 'slider') updateSliderVisuals(unit, config);
+            unit.dataset.config = JSON.stringify(config);
+        }
+
+        function updateSliderVisuals(unit, config) {
+            const orient = config.orient || 'v', thumbType = config.thumb || 'fader', s = unit.querySelector('.midi-slider'), vDisp = unit.querySelector('.cc-value-display'), sideA = unit.querySelector('.side-a'), sideB = unit.querySelector('.side-b');
+            s.className = `midi-slider ${orient === 'h' ? 'h-slider' : 'v-slider'} t-${thumbType}`;
+            s.style.setProperty('--t-color', config.tColor || '#ffffff');
+            [sideA, sideB, vDisp].forEach(el => { el.style.top = el.style.bottom = el.style.left = el.style.right = el.style.transform = 'auto'; el.style.width = el.style.height = 'auto'; });
+            sideA.className = `ticks-group side-a ${orient === 'v' ? 'v-ticks' : 'h-ticks'}`; 
+            sideB.className = `ticks-group side-b ${orient === 'v' ? 'v-ticks' : 'h-ticks'}`;
+            let r = (thumbType === 'fader') ? 8 : 12; const uw = parseInt(unit.style.width), uh = parseInt(unit.style.height);
+            vDisp.style.display = (config.showVal === 'on' ? 'block' : 'none');
+            if (orient === 'v') {
+                const h = uh * 0.85; s.style.width = h + 'px'; vDisp.style.cssText += `top:4px; left:50%; transform:translateX(-50%);`;
+                const tickWidth = Math.min(15, uw * 0.2); sideA.style.width = sideB.style.width = tickWidth + 'px'; sideA.style.height = sideB.style.height = h + 'px'; sideA.style.padding = sideB.style.padding = `${r}px 0`; sideA.style.top = sideB.style.top = '50%'; sideA.style.transform = sideB.style.transform = 'translateY(-50%)'; sideA.style.right = '55%'; sideB.style.left = '55%';
+            } else {
+                const w = uw * 0.85; s.style.width = w + 'px'; vDisp.style.cssText += `right:4px; top:15%; transform:translateY(-50%);`;
+                const tickHeight = Math.min(15, uh * 0.2); sideA.style.height = sideB.style.height = tickHeight + 'px'; sideA.style.width = sideB.style.width = w + 'px'; sideA.style.padding = sideB.style.padding = `0 ${r}px`; sideA.style.left = sideB.style.left = '50%'; sideA.style.transform = sideB.style.transform = 'translateX(-50%)'; sideA.style.bottom = '55%'; sideB.style.top = '55%';
+            }
+            const tHtml = ['large','','','','large','','','','large'].map(c => `<div class="tick ${c}"></div>`).join(''); sideA.innerHTML = sideB.innerHTML = tHtml;
+        }
+
+        function shadeColor(color, percent) { let num = parseInt(color.replace("#",""),16), amt = Math.round(2.55 * percent), R = (num >> 16) + amt, G = (num >> 8 & 0x00FF) + amt, B = (num & 0x0000FF) + amt; return "#" + (0x1000000 + (R<255?R<0?0:R:255)*0x10000 + (G<255?G<0?0:G:255)*0x100 + (B<255?B<0?0:B:255)).toString(16).slice(1); }
+
+        function startMultiDrag(e) {
+            const targets = Array.from(document.querySelectorAll('.midi-unit.selected'));
+            const starts = targets.map(u => ({ x: parseInt(u.style.left), y: parseInt(u.style.top) }));
+            const sx = e.clientX, sy = e.clientY;
+            const move = (me) => {
+                const dx = Math.round((me.clientX - sx) / GRID) * GRID, dy = Math.round((me.clientY - sy) / GRID) * GRID;
+                targets.forEach((u, i) => { u.style.left = starts[i].x + dx + 'px'; u.style.top = starts[i].y + dy + 'px'; });
+            };
+            const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); saveHistory(); };
+            document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+        }
+
+        function startResize(e, el) {
+            const sw = el.offsetWidth, sh = el.offsetHeight, sx = e.clientX, sy = e.clientY;
+            const move = (me) => {
+                el.style.width = Math.max(GRID*2, Math.round((sw + me.clientX - sx)/GRID)*GRID) + 'px';
+                el.style.height = Math.max(GRID*2, Math.round((sh + me.clientY - sy)/GRID)*GRID) + 'px';
+                if(el.dataset.type === 'slider') updateSliderVisuals(el, JSON.parse(el.dataset.config || '{}'));
+            };
+            const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); saveHistory(); };
+            document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+        }
+
+        function toggleLayoutMode() { isLayoutMode = !isLayoutMode; document.body.classList.toggle('layout-mode-active', isLayoutMode); deselectAll(); closeAllPanels(); }
+        function togglePanel(id, e) { e.stopPropagation(); const p = document.getElementById(id); const vis = p.style.display==='block'; closeAllPanels(); if(!vis) p.style.display='block'; }
+        function closeAllPanels() { document.querySelectorAll('.panel').forEach(p => p.style.display='none'); }
+
+        function openUnitPanel(u) {
+            closeAllPanels();
+            activeUnit = u;
+            const p = document.getElementById('unitPanel');
+            const cfg = JSON.parse(u.dataset.config || '{}');
+            document.getElementById('unitLabelInp').value = cfg.label || '';
+            document.getElementById('unitChInp').value = cfg.ch || 0;
+            document.getElementById('unitValInp').value = u.dataset.val;
+            document.getElementById('unitColorInp').value = cfg.color || (u.dataset.type === 'pad' ? '#444444' : '#555555');
+            document.getElementById('unitOrientInp').value = cfg.orient || 'v';
+            document.getElementById('unitThumbInp').value = cfg.thumb || 'fader';
+            document.getElementById('unitThumbColorInp').value = cfg.tColor || '#ffffff';
+            document.getElementById('unitShowValInp').value = cfg.showVal || 'off';
+            document.getElementById('unitShapeInp').value = cfg.shape || 'square';
+            document.getElementById('padOnly').style.display = (u.dataset.type === 'pad' ? 'block' : 'none');
+            document.getElementById('sliderOnly').style.display = (u.dataset.type === 'slider' ? 'block' : 'none');
+            p.style.visibility = 'hidden'; p.style.display = 'block';
+            const rect = u.getBoundingClientRect(), pw = p.offsetWidth || 220, ph = p.offsetHeight || 380, m = 15;
+            let left = rect.right + m; if (left + pw > window.innerWidth) left = rect.left - pw - m;
+            let top = rect.top; if (top + ph > window.innerHeight) top = window.innerHeight - ph - m;
+            p.style.left = Math.max(m, Math.min(left, window.innerWidth - pw - m)) + 'px';
+            p.style.top = Math.max(m, Math.min(top, window.innerHeight - ph - m)) + 'px';
+            p.style.visibility = 'visible';
+
+            document.getElementById('unitPanel').oninput = (ev) => {
+                const currentCfg = JSON.parse(activeUnit.dataset.config || '{}');
+                const oldOrient = currentCfg.orient, newOrient = document.getElementById('unitOrientInp').value;
+                if (u.dataset.type === 'slider' && ev.target.id === 'unitOrientInp' && oldOrient !== newOrient) {
+                    const temp = activeUnit.style.width; activeUnit.style.width = activeUnit.style.height; activeUnit.style.height = temp;
+                }
+                applyConfig(activeUnit, { 
+                    label: document.getElementById('unitLabelInp').value, ch: document.getElementById('unitChInp').value, val: document.getElementById('unitValInp').value, 
+                    color: document.getElementById('unitColorInp').value, shape: document.getElementById('unitShapeInp').value, orient: newOrient, 
+                    thumb: document.getElementById('unitThumbInp').value, tColor: document.getElementById('unitThumbColorInp').value, showVal: document.getElementById('unitShowValInp').value 
+                });
+                saveHistory();
+            };
+        }
+
+        // --- 履歴・保存関連 ---
+        function saveHistory() {
+            const data = serialize();
+            if (historyStack.length > 0 && historyStack[historyStack.length - 1] === data) return;
+            historyStack.push(data);
+            if (historyStack.length > MAX_HISTORY) historyStack.shift();
+            redoStack = [];
+            localStorage.setItem('midi_designer_autosave', data);
+        }
+        function undo() {
+            if (historyStack.length <= 1) return;
+            redoStack.push(historyStack.pop());
+            const prev = historyStack[historyStack.length - 1];
+            apply(prev);
+            localStorage.setItem('midi_designer_autosave', prev);
+        }
+        function redo() {
+            if (redoStack.length === 0) return;
+            const next = redoStack.pop();
+            historyStack.push(next);
+            apply(next);
+            localStorage.setItem('midi_designer_autosave', next);
+        }
+        function serialize() { return JSON.stringify({ ch: document.getElementById('globalCh').value, units: Array.from(document.querySelectorAll('.midi-unit')).map(el => ({ type: el.dataset.type, x: parseInt(el.style.left), y: parseInt(el.style.top), w: parseInt(el.style.width), h: parseInt(el.style.height), val: el.dataset.val, sliderVal: (el.dataset.type === 'slider') ? el.querySelector('.midi-slider').value : 0, config: JSON.parse(el.dataset.config || '{}') })) }); }
+        function apply(json) { const data = JSON.parse(json); canvas.innerHTML = ''; document.getElementById('globalCh').value = data.ch || 1; data.units.forEach(u => { const unit = addUnit(u.type, u.x, u.y, u.w, u.h, u.val, u.config, false); if (u.type === 'slider') { unit.querySelector('.midi-slider').value = u.sliderVal || 0; unit.querySelector('.cc-value-display').innerText = u.sliderVal || 0; } }); }
+
+        function savePreset() { const n = prompt("Name?"); if(!n) return; const d = serialize(); localStorage.setItem(PRESET_PREFIX + n, d); updatePresetList(); }
+        function loadPreset() { const n = document.getElementById('presetSelect').value; const d = localStorage.getItem(n); if(d) { apply(d); saveHistory(); } }
+        function deletePreset() { const n = document.getElementById('presetSelect').value; if(n && confirm("Delete?")) { localStorage.removeItem(n); updatePresetList(); } }
+        function updatePresetList() { const s = document.getElementById('presetSelect'); s.innerHTML = Object.keys(localStorage).filter(k => k.startsWith(PRESET_PREFIX)).map(k => `<option value="${k}">${k.replace(PRESET_PREFIX,'')}</option>`).join(''); }
+        function clearCanvas() { if(confirm("Clear?")) { canvas.innerHTML = ''; saveHistory(); } }
+
+        // ショートカットキー
+        window.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            const isCmd = e.metaKey || e.ctrlKey;
+            if (isCmd && !e.shiftKey && e.key === 'z') { e.preventDefault(); undo(); }
+            if ((isCmd && e.shiftKey && e.key === 'z') || (isCmd && e.key === 'y')) { e.preventDefault(); redo(); }
+            if (isCmd && e.key === 'c') { clipboard = Array.from(document.querySelectorAll('.midi-unit.selected')).map(u => ({ type: u.dataset.type, w: u.style.width, h: u.style.height, x: parseInt(u.style.left), y: parseInt(u.style.top), val: u.dataset.val, config: JSON.parse(u.dataset.config || '{}') })); }
+            if (isCmd && e.key === 'v') { deselectAll(); clipboard.forEach(u => { const nu = addUnit(u.type, u.x + GRID, u.y + GRID, parseInt(u.w), parseInt(u.h), u.val, u.config); nu.classList.add('selected'); }); saveHistory(); }
+            if (isLayoutMode && (e.key === 'Delete' || e.key === 'Backspace')) { document.querySelectorAll('.midi-unit.selected').forEach(u => u.remove()); saveHistory(); }
+        });
+
+        window.onload = () => {
+            updatePresetList();
+            const saved = localStorage.getItem('midi_designer_autosave');
+            if (saved) { apply(saved); historyStack.push(saved); } else { historyStack.push(serialize()); }
+        };
+    </script>
+</body>
+</html>
