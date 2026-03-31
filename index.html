@@ -2,25 +2,39 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MIDI Designer - v61</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MIDI Designer - v62</title>
     <style>
         :root { --grid: 20px; }
-        body { font-family: 'Courier New', Courier, monospace; background: #1a1a1a; color: white; margin: 0; overflow: hidden; touch-action: none; }
-        #canvas { width: 100vw; height: 100vh; position: relative; z-index: 1; }
+        body { 
+            font-family: 'Courier New', Courier, monospace; 
+            background: #1a1a1a; 
+            color: white; 
+            margin: 0; 
+            overflow: hidden; 
+            /* モバイル特有の挙動を制御 */
+            touch-action: none; 
+            -webkit-user-select: none; /* テキスト選択禁止 */
+            -webkit-touch-callout: none; /* 長押しメニュー禁止 */
+        }
+        #canvas { 
+            width: 100vw; 
+            height: 100vh; 
+            position: relative; 
+            z-index: 1;
+            overscroll-behavior: none; /* 引っ張って更新などを防ぐ */
+        }
+        /* 以下、既存のスタイルを維持 */
         .layout-mode-active #canvas { background-image: linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px); background-size: var(--grid) var(--grid); }
-        
-        .midi-unit { position: absolute; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; box-sizing: border-box; border-radius: 4px; background: #222; border: 1px solid transparent; }
+        .midi-unit { position: absolute; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; box-sizing: border-box; border-radius: 4px; background: #222; border: 1px solid transparent; touch-action: none; }
         .layout-mode-active .midi-unit { border: 1px dashed rgba(255,255,255,0.4); }
         .layout-mode-active .midi-unit.selected { border: 2px solid #00ffff !important; box-shadow: 0 0 15px rgba(0,255,255,0.5); z-index: 500; }
         #selection-box { position: absolute; border: 1px solid #00ffff; background: rgba(0, 255, 255, 0.1); pointer-events: none; display: none; z-index: 10000; }
-
-        .pad-inner { width: calc(100% - 12px); height: calc(100% - 12px); background: var(--pad-color, #444); border-radius: 4px; box-shadow: inset 0 2px 4px rgba(255,255,255,0.1), 0 4px 8px rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; transition: transform 0.05s, background 0.05s, box-shadow 0.05s; position: relative; flex-shrink: 0; }
+        .pad-inner { width: calc(100% - 12px); height: calc(100% - 12px); background: var(--pad-color, #444); border-radius: 4px; box-shadow: inset 0 2px 4px rgba(255,255,255,0.1), 0 4px 8px rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; transition: transform 0.05s, background 0.05s, box-shadow 0.05s; position: relative; flex-shrink: 0; pointer-events: none; }
         .shape-circle .pad-inner { border-radius: 50%; }
         .midi-unit:active .pad-inner { transform: scale(0.94) translateY(2px); background: var(--pad-active-color, #666); box-shadow: inset 0 1px 2px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.3); }
-
         .unit-label { font-size: 14px; font-weight: bold; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); pointer-events: none; text-align: center; width: 90%; word-break: break-all; z-index: 60; position: absolute; }
         .slider-unit .unit-label { bottom: 4px; left: 6px; font-size: 10px; color: #ccc; text-align: left; width: auto; background: rgba(0,0,0,0.3); padding: 0 2px; position: absolute; top: auto; }
-
         .slider-wrapper { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; position: relative; pointer-events: none; }
         .midi-slider { appearance: none; -webkit-appearance: none; background: #000; border: 1px solid #444; outline: none; pointer-events: auto; z-index: 10; margin: 0; padding: 0; }
         .midi-slider::-webkit-slider-thumb { appearance: none; background: var(--t-color, #fff); cursor: pointer; border: 2px solid #000; box-shadow: 0 0 0 2px var(--t-color, #fff); }
@@ -30,7 +44,6 @@
         .t-diamond::-webkit-slider-thumb { width: 24px; height: 24px; clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); border-radius: 0; }
         .h-slider { height: 8px; }
         .v-slider { height: 8px; transform: rotate(-90deg); position: absolute; }
-
         .ticks-group { position: absolute; display: flex; justify-content: space-between; pointer-events: none; box-sizing: border-box; z-index: 5; }
         .v-ticks { flex-direction: column-reverse; }
         .h-ticks { flex-direction: row; }
@@ -38,26 +51,22 @@
         .tick.large { background: #fff; }
         .v-ticks .tick { width: 100%; height: 1px; } 
         .h-ticks .tick { height: 100%; width: 1px; } 
-
         .cc-value-display { position: absolute; font-family: 'Courier New', Courier, monospace; font-size: 11px; font-weight: bold; color: #fff; background: #000; border: 1px solid #fff; padding: 2px 4px; z-index: 50; pointer-events: none; min-width: 24px; text-align: center; }
-
         .menu-bar { position: fixed; top: 10px; left: 10px; z-index: 2000; display: flex; gap: 8px; }
-        .btn { cursor: pointer; border: 2px solid #555; background: #000; color: #fff; padding: 6px 12px; font-weight: bold; font-size: 11px; }
-        .panel { position: fixed; background: rgba(0,0,0,0.95); padding: 15px; border: 2px solid #fff; z-index: 3000; font-size: 11px; display: none; width: 190px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+        .btn { cursor: pointer; border: 2px solid #555; background: #000; color: #fff; padding: 6px 12px; font-weight: bold; font-size: 11px; touch-action: manipulation; }
+        .panel { position: fixed; background: rgba(0,0,0,0.95); padding: 15px; border: 2px solid #fff; z-index: 3000; font-size: 11px; display: none; width: 190px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); overscroll-behavior: contain; }
         .panel label { display: block; margin-top: 10px; color: #888; font-size: 9px; }
-        .panel input, .panel select { width: 100%; background: #111; color: #fff; border: 1px solid #555; padding: 5px; box-sizing: border-box; margin-bottom: 4px; }
-
-        .delete-trigger, .edit-trigger, .resizer { position: absolute; width: 22px; height: 22px; display: none; align-items: center; justify-content: center; border: 2px solid #fff; z-index: 100; cursor: pointer; border-radius: 50%; }
-        .delete-trigger { top: -10px; left: -10px; background: #500; color: #fff; }
+        .panel input, .panel select { width: 100%; background: #111; color: #fff; border: 1px solid #555; padding: 5px; box-sizing: border-box; margin-bottom: 4px; font-size: 16px; /* モバイルでのズーム防止のため16px推奨 */ }
+        .delete-trigger, .edit-trigger, .resizer { position: absolute; width: 28px; height: 28px; display: none; align-items: center; justify-content: center; border: 2px solid #fff; z-index: 100; cursor: pointer; border-radius: 50%; }
+        .delete-trigger { top: -14px; left: -14px; background: #500; color: #fff; }
         .delete-trigger::after { content: '×'; }
-        .edit-trigger { top: -10px; right: -10px; background: #000; color: #fff; }
+        .edit-trigger { top: -14px; right: -14px; background: #000; color: #fff; }
         .edit-trigger::after { content: '+'; }
-        .resizer { right: 0; bottom: 0; width: 16px; height: 16px; background: #fff; border: 2px solid #000; border-radius: 0; cursor: nwse-resize; z-index: 110; }
+        .resizer { right: 0; bottom: 0; width: 20px; height: 20px; background: #fff; border: 2px solid #000; border-radius: 0; cursor: nwse-resize; z-index: 110; }
         .layout-mode-active .edit-trigger, .layout-mode-active .delete-trigger, .layout-mode-active .resizer { display: flex; }
     </style>
 </head>
 <body>
-
     <div class="menu-bar">
         <button class="btn" onclick="toggleLayoutMode()">EDIT MODE</button>
         <button class="btn" onclick="togglePanel('globalSettings', event)">SETTINGS</button>
@@ -68,10 +77,10 @@
         <label>MIDI OUT DEVICE</label><select id="midiOutSelect" onchange="updateMidiOutput()"></select>
         <label>GLOBAL MIDI CH</label><input type="number" id="globalCh" value="1" min="1" max="16" onchange="saveHistory()">
         <hr style="border:1px solid #333; margin:10px 0;">
-        <button class="btn" onclick="addUnit('pad', 100, 100, 100, 100)" style="width:100%; margin-bottom:4px;">+ PAD</button>
-        <button class="btn" onclick="addUnit('slider', 200, 100, 60, 240, 1, {orient:'v', thumb:'fader'})" style="width:100%; margin-bottom:4px;">+ SLIDER</button>
-        <button class="btn" onclick="addUnit('oct-up', 320, 100, 60, 60, 0, {label:'OCT +'})" style="width:100%; margin-bottom:4px;">+ OCT UP</button>
-        <button class="btn" onclick="addUnit('oct-down', 320, 170, 60, 60, 0, {label:'OCT -'})" style="width:100%; margin-bottom:4px;">+ OCT DOWN</button>
+        <button class="btn" onclick="addUnit('pad', 40, 100, 100, 100)" style="width:100%; margin-bottom:4px;">+ PAD</button>
+        <button class="btn" onclick="addUnit('slider', 150, 100, 60, 240, 1, {orient:'v', thumb:'fader'})" style="width:100%; margin-bottom:4px;">+ SLIDER</button>
+        <button class="btn" onclick="addUnit('oct-up', 220, 100, 60, 60, 0, {label:'OCT +'})" style="width:100%; margin-bottom:4px;">+ OCT UP</button>
+        <button class="btn" onclick="addUnit('oct-down', 220, 170, 60, 60, 0, {label:'OCT -'})" style="width:100%; margin-bottom:4px;">+ OCT DOWN</button>
         <hr style="border:1px solid #333; margin:10px 0;">
         <label>PRESETS</label>
         <select id="presetSelect" style="width:100%; margin-bottom:4px;"></select>
@@ -104,16 +113,16 @@
     <div id="selection-box"></div>
 
     <script>
+        // 内部ロジックは v61 と同じですが、スマホでの「クリックの遅延」をなくすために 
+        // pointer-events などを最適化しています。
         let midiAccess = null, midiOutput = null, isLayoutMode = false, activeUnit = null, globalOctave = 0, clipboard = [];
         const GRID = 20, PRESET_PREFIX = 'midi_v47_';
         const canvas = document.getElementById('canvas'), selectionBox = document.getElementById('selection-box');
         let isSelecting = false, startX, startY;
-        
-        // 履歴管理スタック
-        let historyStack = [];
-        let redoStack = [];
+        let historyStack = [], redoStack = [];
         const MAX_HISTORY = 50;
 
+        // MIDI初期化
         navigator.requestMIDIAccess().then(access => { midiAccess = access; refreshMidiDevices(); midiAccess.onstatechange = () => refreshMidiDevices(); });
         function refreshMidiDevices() {
             const select = document.getElementById('midiOutSelect'); if(!select) return;
@@ -126,14 +135,15 @@
         const unitChInp = document.getElementById('unitChInp');
         for(let i=1; i<=16; i++) { const opt = document.createElement('option'); opt.value = i; opt.innerText = `CH ${i}`; unitChInp.appendChild(opt); }
 
-        canvas.addEventListener('mousedown', (e) => {
+        // イベント設定
+        canvas.addEventListener('pointerdown', (e) => { // mousedown から pointerdown に変更
             if (!isLayoutMode || e.target !== canvas) return;
             isSelecting = true; startX = e.clientX; startY = e.clientY;
             selectionBox.style.display = 'block';
             if (!e.shiftKey) deselectAll();
             closeAllPanels();
         });
-        window.addEventListener('mousemove', (e) => {
+        window.addEventListener('pointermove', (e) => {
             if (!isSelecting) return;
             const l = Math.min(startX, e.clientX), t = Math.min(startY, e.clientY), w = Math.abs(e.clientX - startX), h = Math.abs(e.clientY - startY);
             selectionBox.style.left = l+'px'; selectionBox.style.top = t+'px'; selectionBox.style.width = w+'px'; selectionBox.style.height = h+'px';
@@ -143,7 +153,7 @@
                 else if (!e.shiftKey) u.classList.remove('selected');
             });
         });
-        window.addEventListener('mouseup', () => { isSelecting = false; selectionBox.style.display = 'none'; });
+        window.addEventListener('pointerup', () => { isSelecting = false; selectionBox.style.display = 'none'; });
         function deselectAll() { document.querySelectorAll('.midi-unit.selected').forEach(u => u.classList.remove('selected')); }
 
         function addUnit(type, x, y, w, h, val=36, config={}, shouldSave=true) {
@@ -159,7 +169,7 @@
 
             applyConfig(unit, config);
 
-            unit.onmousedown = (e) => {
+            unit.onpointerdown = (e) => { // pointerdown
                 e.stopPropagation();
                 if (e.target.classList.contains('delete-trigger')) { unit.remove(); saveHistory(); return; }
                 if (e.target.classList.contains('edit-trigger')) { openUnitPanel(unit); return; }
@@ -170,7 +180,9 @@
                 } else handleMidiAction(unit, 'down');
             };
             if (type === 'pad' || type.startsWith('oct')) {
-                unit.onmouseup = unit.onmouseleave = () => handleMidiAction(unit, 'up');
+                unit.onpointerup = unit.onpointerleave = (e) => {
+                    handleMidiAction(unit, 'up');
+                };
             }
             if (type === 'slider') {
                 unit.querySelector('.midi-slider').oninput = (e) => {
@@ -223,8 +235,7 @@
             s.className = `midi-slider ${orient === 'h' ? 'h-slider' : 'v-slider'} t-${thumbType}`;
             s.style.setProperty('--t-color', config.tColor || '#ffffff');
             [sideA, sideB, vDisp].forEach(el => { el.style.top = el.style.bottom = el.style.left = el.style.right = el.style.transform = 'auto'; el.style.width = el.style.height = 'auto'; });
-            sideA.className = `ticks-group side-a ${orient === 'v' ? 'v-ticks' : 'h-ticks'}`; 
-            sideB.className = `ticks-group side-b ${orient === 'v' ? 'v-ticks' : 'h-ticks'}`;
+            sideA.className = `ticks-group side-a ${orient === 'v' ? 'v-ticks' : 'h-ticks'}`; sideB.className = `ticks-group side-b ${orient === 'v' ? 'v-ticks' : 'h-ticks'}`;
             let r = (thumbType === 'fader') ? 8 : 12; const uw = parseInt(unit.style.width), uh = parseInt(unit.style.height);
             vDisp.style.display = (config.showVal === 'on' ? 'block' : 'none');
             if (orient === 'v') {
@@ -247,8 +258,8 @@
                 const dx = Math.round((me.clientX - sx) / GRID) * GRID, dy = Math.round((me.clientY - sy) / GRID) * GRID;
                 targets.forEach((u, i) => { u.style.left = starts[i].x + dx + 'px'; u.style.top = starts[i].y + dy + 'px'; });
             };
-            const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); saveHistory(); };
-            document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+            const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); saveHistory(); };
+            window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
         }
 
         function startResize(e, el) {
@@ -258,8 +269,8 @@
                 el.style.height = Math.max(GRID*2, Math.round((sh + me.clientY - sy)/GRID)*GRID) + 'px';
                 if(el.dataset.type === 'slider') updateSliderVisuals(el, JSON.parse(el.dataset.config || '{}'));
             };
-            const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); saveHistory(); };
-            document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+            const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); saveHistory(); };
+            window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
         }
 
         function toggleLayoutMode() { isLayoutMode = !isLayoutMode; document.body.classList.toggle('layout-mode-active', isLayoutMode); deselectAll(); closeAllPanels(); }
@@ -283,7 +294,7 @@
             document.getElementById('padOnly').style.display = (u.dataset.type === 'pad' ? 'block' : 'none');
             document.getElementById('sliderOnly').style.display = (u.dataset.type === 'slider' ? 'block' : 'none');
             p.style.visibility = 'hidden'; p.style.display = 'block';
-            const rect = u.getBoundingClientRect(), pw = p.offsetWidth || 220, ph = p.offsetHeight || 380, m = 15;
+            const rect = u.getBoundingClientRect(), pw = p.offsetWidth || 220, ph = p.offsetHeight || 420, m = 15;
             let left = rect.right + m; if (left + pw > window.innerWidth) left = rect.left - pw - m;
             let top = rect.top; if (top + ph > window.innerHeight) top = window.innerHeight - ph - m;
             p.style.left = Math.max(m, Math.min(left, window.innerWidth - pw - m)) + 'px';
@@ -305,7 +316,6 @@
             };
         }
 
-        // --- 履歴・保存関連 ---
         function saveHistory() {
             const data = serialize();
             if (historyStack.length > 0 && historyStack[historyStack.length - 1] === data) return;
@@ -337,7 +347,6 @@
         function updatePresetList() { const s = document.getElementById('presetSelect'); s.innerHTML = Object.keys(localStorage).filter(k => k.startsWith(PRESET_PREFIX)).map(k => `<option value="${k}">${k.replace(PRESET_PREFIX,'')}</option>`).join(''); }
         function clearCanvas() { if(confirm("Clear?")) { canvas.innerHTML = ''; saveHistory(); } }
 
-        // ショートカットキー
         window.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT') return;
             const isCmd = e.metaKey || e.ctrlKey;
