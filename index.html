@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>MIDI Designer - v62</title>
+    <title>MIDI Designer - v67</title>
     <style>
         :root { --grid: 20px; }
         body { 
@@ -12,19 +12,17 @@
             color: white; 
             margin: 0; 
             overflow: hidden; 
-            /* モバイル特有の挙動を制御 */
             touch-action: none; 
-            -webkit-user-select: none; /* テキスト選択禁止 */
-            -webkit-touch-callout: none; /* 長押しメニュー禁止 */
+            -webkit-user-select: none;
+            -webkit-touch-callout: none; /* iOSでの長押しメニュー禁止 */
         }
         #canvas { 
             width: 100vw; 
             height: 100vh; 
             position: relative; 
             z-index: 1;
-            overscroll-behavior: none; /* 引っ張って更新などを防ぐ */
+            overscroll-behavior: none;
         }
-        /* 以下、既存のスタイルを維持 */
         .layout-mode-active #canvas { background-image: linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px); background-size: var(--grid) var(--grid); }
         .midi-unit { position: absolute; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; box-sizing: border-box; border-radius: 4px; background: #222; border: 1px solid transparent; touch-action: none; }
         .layout-mode-active .midi-unit { border: 1px dashed rgba(255,255,255,0.4); }
@@ -53,24 +51,10 @@
         .h-ticks .tick { height: 100%; width: 1px; } 
         .cc-value-display { position: absolute; font-family: 'Courier New', Courier, monospace; font-size: 11px; font-weight: bold; color: #fff; background: #000; border: 1px solid #fff; padding: 2px 4px; z-index: 50; pointer-events: none; min-width: 24px; text-align: center; }
         .menu-bar { position: fixed; top: 10px; left: 10px; z-index: 2000; display: flex; gap: 8px; }
-        .edit-tools { 
-    display: none; 
-    gap: 4px; 
-    margin-left: 10px; 
-    padding-left: 10px; 
-    border-left: 1px solid #444; 
-}
-/* エディットモードの時だけ表示 */
-.layout-mode-active .edit-tools { display: flex; }
-
-.btn-sm { padding: 6px 8px; font-size: 10px; background: #333; border-color: #555; min-width: 45px; }
-.btn-copy { color: #00ffff; }
-.btn-paste { color: #00ff00; }
-.btn-del { color: #ff4444; }
         .btn { cursor: pointer; border: 2px solid #555; background: #000; color: #fff; padding: 6px 12px; font-weight: bold; font-size: 11px; touch-action: manipulation; }
         .panel { position: fixed; background: rgba(0,0,0,0.95); padding: 15px; border: 2px solid #fff; z-index: 3000; font-size: 11px; display: none; width: 190px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); overscroll-behavior: contain; }
         .panel label { display: block; margin-top: 10px; color: #888; font-size: 9px; }
-        .panel input, .panel select { width: 100%; background: #111; color: #fff; border: 1px solid #555; padding: 5px; box-sizing: border-box; margin-bottom: 4px; font-size: 16px; /* モバイルでのズーム防止のため16px推奨 */ }
+        .panel input, .panel select { width: 100%; background: #111; color: #fff; border: 1px solid #555; padding: 5px; box-sizing: border-box; margin-bottom: 4px; font-size: 16px; }
         .delete-trigger, .edit-trigger, .resizer { position: absolute; width: 28px; height: 28px; display: none; align-items: center; justify-content: center; border: 2px solid #fff; z-index: 100; cursor: pointer; border-radius: 50%; }
         .delete-trigger { top: -14px; left: -14px; background: #500; color: #fff; }
         .delete-trigger::after { content: '×'; }
@@ -78,35 +62,37 @@
         .edit-trigger::after { content: '+'; }
         .resizer { right: 0; bottom: 0; width: 20px; height: 20px; background: #fff; border: 2px solid #000; border-radius: 0; cursor: nwse-resize; z-index: 110; }
         .layout-mode-active .edit-trigger, .layout-mode-active .delete-trigger, .layout-mode-active .resizer { display: flex; }
+        
+        /* 履歴・コピペ用のボタンエリア（EDIT MODE時のみ表示） */
+        #editTools { display: none; margin-top: 8px; gap: 4px; flex-wrap: wrap; }
+        .layout-mode-active #editTools { display: flex; }
+        .btn-sm { padding: 4px 8px; font-size: 10px; border-color: #777; }
     </style>
 </head>
-<body>
-    <div class="menu-bar">
-        <button class="btn" onclick="toggleLayoutMode()">EDIT MODE</button>
-        <div class="menu-bar">
-    <button class="btn" onclick="toggleLayoutMode()">EDIT MODE</button>
-    
-    <div class="edit-tools">
-        <button class="btn btn-sm btn-copy" onclick="copySelected()">COPY</button>
-        <button class="btn btn-sm btn-paste" onclick="pasteSelected()">PASTE</button>
-        <button class="btn btn-sm" onclick="selectAll()">ALL</button>
-        <button class="btn btn-sm btn-del" onclick="deleteSelected()">DEL</button>
-    </div>
-    <button class="btn" onclick="togglePanel('globalSettings', event)">SETTINGS</button>
-    <div id="octDisplay" ...>OCT: 0</div>
-</div>
-        <button class="btn" onclick="togglePanel('globalSettings', event)">SETTINGS</button>
-        <div id="octDisplay" style="background:#000; border:2px solid #555; padding:6px 12px; font-size:11px; color:#fff; font-weight:bold; min-width:50px; text-align:center;">OCT: 0</div>
+<body oncontextmenu="return false;"> <div class="menu-bar">
+        <div style="display:flex; flex-direction:column;">
+            <div style="display:flex; gap:8px;">
+                <button class="btn" onclick="toggleLayoutMode()">EDIT MODE</button>
+                <button class="btn" onclick="togglePanel('globalSettings', event)">SETTINGS</button>
+                <div id="octDisplay" style="background:#000; border:2px solid #555; padding:6px 12px; font-size:11px; color:#fff; font-weight:bold; min-width:50px; text-align:center;">OCT: 0</div>
+            </div>
+            <div id="editTools">
+                <button class="btn btn-sm" onclick="undo()">UNDO</button>
+                <button class="btn btn-sm" onclick="redo()">REDO</button>
+                <button class="btn btn-sm" onclick="copySelected()">COPY</button>
+                <button class="btn btn-sm" onclick="pasteSelected()">PASTE</button>
+            </div>
+        </div>
     </div>
 
-    <div id="globalSettings" class="panel" style="top:60px; left:10px;" onmousedown="event.stopPropagation()">
+    <div id="globalSettings" class="panel" style="top:90px; left:10px;" onmousedown="event.stopPropagation()">
         <label>MIDI OUT DEVICE</label><select id="midiOutSelect" onchange="updateMidiOutput()"></select>
         <label>GLOBAL MIDI CH</label><input type="number" id="globalCh" value="1" min="1" max="16" onchange="saveHistory()">
         <hr style="border:1px solid #333; margin:10px 0;">
-        <button class="btn" onclick="addUnit('pad', 40, 100, 100, 100)" style="width:100%; margin-bottom:4px;">+ PAD</button>
-        <button class="btn" onclick="addUnit('slider', 150, 100, 60, 240, 1, {orient:'v', thumb:'fader'})" style="width:100%; margin-bottom:4px;">+ SLIDER</button>
-        <button class="btn" onclick="addUnit('oct-up', 220, 100, 60, 60, 0, {label:'OCT +'})" style="width:100%; margin-bottom:4px;">+ OCT UP</button>
-        <button class="btn" onclick="addUnit('oct-down', 220, 170, 60, 60, 0, {label:'OCT -'})" style="width:100%; margin-bottom:4px;">+ OCT DOWN</button>
+        <button class="btn" onclick="addUnit('pad', 40, 150, 100, 100)" style="width:100%; margin-bottom:4px;">+ PAD</button>
+        <button class="btn" onclick="addUnit('slider', 150, 150, 60, 240, 1, {orient:'v', thumb:'fader'})" style="width:100%; margin-bottom:4px;">+ SLIDER</button>
+        <button class="btn" onclick="addUnit('oct-up', 220, 150, 60, 60, 0, {label:'OCT +'})" style="width:100%; margin-bottom:4px;">+ OCT UP</button>
+        <button class="btn" onclick="addUnit('oct-down', 220, 220, 60, 60, 0, {label:'OCT -'})" style="width:100%; margin-bottom:4px;">+ OCT DOWN</button>
         <hr style="border:1px solid #333; margin:10px 0;">
         <label>PRESETS</label>
         <select id="presetSelect" style="width:100%; margin-bottom:4px;"></select>
@@ -135,13 +121,10 @@
         <button class="btn" onclick="closeAllPanels()" style="width:100%; margin-top:15px;">CLOSE</button>
     </div>
 
-
     <div id="canvas"></div>
     <div id="selection-box"></div>
 
     <script>
-        // 内部ロジックは v61 と同じですが、スマホでの「クリックの遅延」をなくすために 
-        // pointer-events などを最適化しています。
         let midiAccess = null, midiOutput = null, isLayoutMode = false, activeUnit = null, globalOctave = 0, clipboard = [];
         const GRID = 20, PRESET_PREFIX = 'midi_v47_';
         const canvas = document.getElementById('canvas'), selectionBox = document.getElementById('selection-box');
@@ -149,7 +132,6 @@
         let historyStack = [], redoStack = [];
         const MAX_HISTORY = 50;
 
-        // MIDI初期化
         navigator.requestMIDIAccess().then(access => { midiAccess = access; refreshMidiDevices(); midiAccess.onstatechange = () => refreshMidiDevices(); });
         function refreshMidiDevices() {
             const select = document.getElementById('midiOutSelect'); if(!select) return;
@@ -162,22 +144,13 @@
         const unitChInp = document.getElementById('unitChInp');
         for(let i=1; i<=16; i++) { const opt = document.createElement('option'); opt.value = i; opt.innerText = `CH ${i}`; unitChInp.appendChild(opt); }
 
-        // イベント設定
         canvas.addEventListener('pointerdown', (e) => {
-    // 背景（canvas自体）をクリックした場合は、モードに関わらずパネルを閉じる
-    if (e.target === canvas) {
-        closeAllPanels();
-    }
-
-    // レイアウトモード時のみ、選択枠のロジックを実行
-    if (!isLayoutMode || e.target !== canvas) return;
-    
-    isSelecting = true; 
-    startX = e.clientX; 
-    startY = e.clientY;
-    selectionBox.style.display = 'block';
-    if (!e.shiftKey) deselectAll();
-});
+            if (e.target === canvas) closeAllPanels();
+            if (!isLayoutMode || e.target !== canvas) return;
+            isSelecting = true; startX = e.clientX; startY = e.clientY;
+            selectionBox.style.display = 'block';
+            if (!e.shiftKey) deselectAll();
+        });
         window.addEventListener('pointermove', (e) => {
             if (!isSelecting) return;
             const l = Math.min(startX, e.clientX), t = Math.min(startY, e.clientY), w = Math.abs(e.clientX - startX), h = Math.abs(e.clientY - startY);
@@ -196,21 +169,14 @@
             unit.className = `midi-unit ${type}-unit`;
             unit.style.cssText = `left:${x}px; top:${y}px; width:${w}px; height:${h}px;`;
             unit.dataset.type = type; unit.dataset.val = val;
-            
             let html = `<div class="unit-label"></div><div class="delete-trigger"></div><div class="edit-trigger"></div><div class="resizer"></div>`;
             if (type === 'pad' || type.startsWith('oct')) html = `<div class="pad-inner"><div class="unit-label"></div></div>` + html;
             else if (type === 'slider') html += `<div class="cc-value-display">0</div><div class="slider-wrapper"><div class="ticks-group side-a"></div><input type="range" class="midi-slider" min="0" max="127" value="0"><div class="ticks-group side-b"></div></div>`;
             unit.innerHTML = html;
-
             applyConfig(unit, config);
 
             unit.onpointerdown = (e) => {
-    e.stopPropagation();
-    
-    // パネルが開いている時にパッドを叩いたら、パネルを閉じる（演奏を優先する挙動）
-    if (!isLayoutMode) {
-        closeAllPanels();
-    }
+                e.stopPropagation();
                 if (e.target.classList.contains('delete-trigger')) { unit.remove(); saveHistory(); return; }
                 if (e.target.classList.contains('edit-trigger')) { openUnitPanel(unit); return; }
                 if (isLayoutMode) {
@@ -220,9 +186,7 @@
                 } else handleMidiAction(unit, 'down');
             };
             if (type === 'pad' || type.startsWith('oct')) {
-                unit.onpointerup = unit.onpointerleave = (e) => {
-                    handleMidiAction(unit, 'up');
-                };
+                unit.onpointerup = unit.onpointerleave = (e) => { handleMidiAction(unit, 'up'); };
             }
             if (type === 'slider') {
                 unit.querySelector('.midi-slider').oninput = (e) => {
@@ -250,15 +214,11 @@
             }
         }
 
-
         function sendMidiFromUnit(unit, s, d1, d2) {
-          if (!midiOutput) return;
-
             const cfg = JSON.parse(unit.dataset.config || '{}');
             let ch = (cfg.ch && cfg.ch != 0) ? parseInt(cfg.ch) : parseInt(document.getElementById('globalCh').value);
             midiOutput.send([s + (ch - 1), d1, d2]);
-    }
-
+        }
 
         function applyConfig(unit, config) {
             unit.dataset.val = config.val || unit.dataset.val;
@@ -319,23 +279,17 @@
 
         function toggleLayoutMode() { isLayoutMode = !isLayoutMode; document.body.classList.toggle('layout-mode-active', isLayoutMode); deselectAll(); closeAllPanels(); }
         function togglePanel(id, e) {
-    if (e) e.stopPropagation(); // ボタンクリックが背景に伝わらないようにする
-    const p = document.getElementById(id);
-    const isVisible = p.style.display === 'block';
-    
-    // 一旦全部閉じてから、クリックされたパネルだけトグル（切り替え）する
-    closeAllPanels(); 
-    if (!isVisible) {
-        p.style.display = 'block';
-    }
-}
+            if (e) e.stopPropagation();
+            const p = document.getElementById(id);
+            const isVisible = p.style.display === 'block';
+            closeAllPanels(); 
+            if (!isVisible) p.style.display = 'block';
+        }
         function closeAllPanels() { document.querySelectorAll('.panel').forEach(p => p.style.display='none'); }
 
         function openUnitPanel(u) {
-            closeAllPanels();
-            activeUnit = u;
-            const p = document.getElementById('unitPanel');
-            const cfg = JSON.parse(u.dataset.config || '{}');
+            closeAllPanels(); activeUnit = u;
+            const p = document.getElementById('unitPanel'), cfg = JSON.parse(u.dataset.config || '{}');
             document.getElementById('unitLabelInp').value = cfg.label || '';
             document.getElementById('unitChInp').value = cfg.ch || 0;
             document.getElementById('unitValInp').value = u.dataset.val;
@@ -370,6 +324,7 @@
             };
         }
 
+        // --- 履歴 & コピペ ロジック ---
         function saveHistory() {
             const data = serialize();
             if (historyStack.length > 0 && historyStack[historyStack.length - 1] === data) return;
@@ -382,19 +337,31 @@
             if (historyStack.length <= 1) return;
             redoStack.push(historyStack.pop());
             const prev = historyStack[historyStack.length - 1];
-            apply(prev);
-            localStorage.setItem('midi_designer_autosave', prev);
+            apply(prev); localStorage.setItem('midi_designer_autosave', prev);
         }
         function redo() {
             if (redoStack.length === 0) return;
             const next = redoStack.pop();
             historyStack.push(next);
-            apply(next);
-            localStorage.setItem('midi_designer_autosave', next);
+            apply(next); localStorage.setItem('midi_designer_autosave', next);
         }
+        function copySelected() {
+            clipboard = Array.from(document.querySelectorAll('.midi-unit.selected')).map(u => ({
+                type: u.dataset.type, w: u.style.width, h: u.style.height, x: parseInt(u.style.left), y: parseInt(u.style.top), val: u.dataset.val, config: JSON.parse(u.dataset.config || '{}')
+            }));
+        }
+        function pasteSelected() {
+            if (clipboard.length === 0) return;
+            deselectAll();
+            clipboard.forEach(u => {
+                const nu = addUnit(u.type, u.x + GRID, u.y + GRID, parseInt(u.w), parseInt(u.h), u.val, u.config);
+                nu.classList.add('selected');
+            });
+            saveHistory();
+        }
+
         function serialize() { return JSON.stringify({ ch: document.getElementById('globalCh').value, units: Array.from(document.querySelectorAll('.midi-unit')).map(el => ({ type: el.dataset.type, x: parseInt(el.style.left), y: parseInt(el.style.top), w: parseInt(el.style.width), h: parseInt(el.style.height), val: el.dataset.val, sliderVal: (el.dataset.type === 'slider') ? el.querySelector('.midi-slider').value : 0, config: JSON.parse(el.dataset.config || '{}') })) }); }
         function apply(json) { const data = JSON.parse(json); canvas.innerHTML = ''; document.getElementById('globalCh').value = data.ch || 1; data.units.forEach(u => { const unit = addUnit(u.type, u.x, u.y, u.w, u.h, u.val, u.config, false); if (u.type === 'slider') { unit.querySelector('.midi-slider').value = u.sliderVal || 0; unit.querySelector('.cc-value-display').innerText = u.sliderVal || 0; } }); }
-
         function savePreset() { const n = prompt("Name?"); if(!n) return; const d = serialize(); localStorage.setItem(PRESET_PREFIX + n, d); updatePresetList(); }
         function loadPreset() { const n = document.getElementById('presetSelect').value; const d = localStorage.getItem(n); if(d) { apply(d); saveHistory(); } }
         function deletePreset() { const n = document.getElementById('presetSelect').value; if(n && confirm("Delete?")) { localStorage.removeItem(n); updatePresetList(); } }
@@ -402,71 +369,12 @@
         function clearCanvas() { if(confirm("Clear?")) { canvas.innerHTML = ''; saveHistory(); } }
 
         window.addEventListener('keydown', (e) => {
-/* --- 既存の関数の並びに新しく追加 --- */
-
-function copySelected() {
-    const selected = document.querySelectorAll('.midi-unit.selected');
-    if (selected.length === 0) return;
-    
-    clipboard = Array.from(selected).map(u => ({
-        type: u.dataset.type,
-        w: u.style.width,
-        h: u.style.height,
-        x: parseInt(u.style.left),
-        y: parseInt(u.style.top),
-        val: u.dataset.val,
-        config: JSON.parse(u.dataset.config || '{}')
-    }));
-}
-
-function pasteSelected() {
-    if (clipboard.length === 0) return;
-    deselectAll();
-    
-    clipboard.forEach(u => {
-        // スマホで見失わないよう、GRID(20px)分だけ右下にずらして貼り付け
-        const nu = addUnit(u.type, u.x + GRID, u.y + GRID, parseInt(u.w), parseInt(u.h), u.val, u.config);
-        nu.classList.add('selected');
-    });
-    saveHistory();
-}
-
-function selectAll() {
-    document.querySelectorAll('.midi-unit').forEach(u => u.classList.add('selected'));
-}
-
-function deleteSelected() {
-    const selected = document.querySelectorAll('.midi-unit.selected');
-    if (selected.length > 0 && confirm(`${selected.length}個のパーツを削除しますか？`)) {
-        selected.forEach(u => u.remove());
-        saveHistory();
-    }
-}
-
-// --- 既存の window.addEventListener('keydown', ...) の中身を整理 ---
-window.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT') return;
-    const isCmd = e.metaKey || e.ctrlKey;
-    
-    // Ctrl/Cmd + C でコピー
-    if (isCmd && e.key === 'c') { e.preventDefault(); copySelected(); }
-    
-    // Ctrl/Cmd + V で貼り付け
-    if (isCmd && e.key === 'v') { e.preventDefault(); pasteSelected(); }
-    
-    // Deleteキーで削除
-    if (isLayoutMode && (e.key === 'Delete' || e.key === 'Backspace')) { 
-        deleteSelected(); 
-    }
-    
-    // Undo/Redo など他の処理はそのまま維持...
-});
             if (e.target.tagName === 'INPUT') return;
             const isCmd = e.metaKey || e.ctrlKey;
             if (isCmd && !e.shiftKey && e.key === 'z') { e.preventDefault(); undo(); }
             if ((isCmd && e.shiftKey && e.key === 'z') || (isCmd && e.key === 'y')) { e.preventDefault(); redo(); }
-            if (isCmd && e.key === 'c') { clipboard = Array.from(document.querySelectorAll('.midi-unit.selected')).map(u => ({ type: u.dataset.type, w: u.style.width, h: u.style.height, x: parseInt(u.style.left), y: parseInt(u.style.top), val: u.dataset.val, config: JSON.parse(u.dataset.config || '{}') })); }
-            if (isCmd && e.key === 'v') { deselectAll(); clipboard.forEach(u => { const nu = addUnit(u.type, u.x + GRID, u.y + GRID, parseInt(u.w), parseInt(u.h), u.val, u.config); nu.classList.add('selected'); }); saveHistory(); }
+            if (isCmd && e.key === 'c') { copySelected(); }
+            if (isCmd && e.key === 'v') { pasteSelected(); }
             if (isLayoutMode && (e.key === 'Delete' || e.key === 'Backspace')) { document.querySelectorAll('.midi-unit.selected').forEach(u => u.remove()); saveHistory(); }
         });
 
