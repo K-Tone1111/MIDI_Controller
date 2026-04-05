@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>MIDI Designer - v67</title>
+    <title>MIDI Designer - v68</title>
     <style>
         :root { --grid: 20px; }
         body { 
@@ -14,7 +14,7 @@
             overflow: hidden; 
             touch-action: none; 
             -webkit-user-select: none;
-            -webkit-touch-callout: none; /* iOSでの長押しメニュー禁止 */
+            -webkit-touch-callout: none;
         }
         #canvas { 
             width: 100vw; 
@@ -23,6 +23,11 @@
             z-index: 1;
             overscroll-behavior: none;
         }
+        /* アプリモード(演奏専用)の時は編集用UIを完全に隠す */
+        body.app-mode .menu-bar, body.app-mode .delete-trigger, body.app-mode .edit-trigger, body.app-mode .resizer {
+            display: none !important;
+        }
+
         .layout-mode-active #canvas { background-image: linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.05) 1px, transparent 1px); background-size: var(--grid) var(--grid); }
         .midi-unit { position: absolute; display: flex; align-items: center; justify-content: center; cursor: pointer; user-select: none; box-sizing: border-box; border-radius: 4px; background: #222; border: 1px solid transparent; touch-action: none; }
         .layout-mode-active .midi-unit { border: 1px dashed rgba(255,255,255,0.4); }
@@ -62,14 +67,36 @@
         .edit-trigger::after { content: '+'; }
         .resizer { right: 0; bottom: 0; width: 20px; height: 20px; background: #fff; border: 2px solid #000; border-radius: 0; cursor: nwse-resize; z-index: 110; }
         .layout-mode-active .edit-trigger, .layout-mode-active .delete-trigger, .layout-mode-active .resizer { display: flex; }
-        
-        /* 履歴・コピペ用のボタンエリア（EDIT MODE時のみ表示） */
         #editTools { display: none; margin-top: 8px; gap: 4px; flex-wrap: wrap; }
         .layout-mode-active #editTools { display: flex; }
         .btn-sm { padding: 4px 8px; font-size: 10px; border-color: #777; }
+
+/* アプリモード(演奏専用)のスタイル */
+body.app-mode .menu-bar {
+    background: #000;
+    border-bottom: 2px solid #00ffff;
+    width: 100%;
+    left: 0;
+    top: 0;
+    padding: 8px;
+}
+
+/* アプリモードでは「EDIT MODE」と「SETTINGS」ボタンを物理的に隠す */
+body.app-mode button[onclick*="toggleLayoutMode"],
+body.app-mode button[onclick*="globalSettings"],
+body.app-mode #editTools {
+    display: none !important;
+}
+
+/* アプリモードでもMIDI選択とOCT表示は見せる */
+body.app-mode #midiOutSelect,
+body.app-mode #octDisplay {
+    display: block !important;
+}
     </style>
 </head>
-<body oncontextmenu="return false;"> <div class="menu-bar">
+<body oncontextmenu="return false;">
+    <div class="menu-bar">
         <div style="display:flex; flex-direction:column;">
             <div style="display:flex; gap:8px;">
                 <button class="btn" onclick="toggleLayoutMode()">EDIT MODE</button>
@@ -90,9 +117,20 @@
         <label>GLOBAL MIDI CH</label><input type="number" id="globalCh" value="1" min="1" max="16" onchange="saveHistory()">
         <hr style="border:1px solid #333; margin:10px 0;">
         <button class="btn" onclick="addUnit('pad', 40, 150, 100, 100)" style="width:100%; margin-bottom:4px;">+ PAD</button>
-        <button class="btn" onclick="addUnit('slider', 150, 150, 60, 240, 1, {orient:'v', thumb:'fader'})" style="width:100%; margin-bottom:4px;">+ SLIDER</button>
-        <button class="btn" onclick="addUnit('oct-up', 220, 150, 60, 60, 0, {label:'OCT +'})" style="width:100%; margin-bottom:4px;">+ OCT UP</button>
-        <button class="btn" onclick="addUnit('oct-down', 220, 220, 60, 60, 0, {label:'OCT -'})" style="width:100%; margin-bottom:4px;">+ OCT DOWN</button>
+<button class="btn" onclick="addUnit('slider', 150, 150, 60, 240, 1, {orient:'v', thumb:'fader'})" style="width:100%; margin-bottom:4px;">+ SLIDER</button>
+
+<div style="display: flex; gap: 4px; margin-bottom: 4px;">
+    <button class="btn" onclick="addUnit('oct-up', 40, 300, 80, 80, 0, {label:'OCT +'})" style="flex: 1;">+ OCT UP</button>
+    <button class="btn" onclick="addUnit('oct-down', 130, 300, 80, 80, 0, {label:'OCT -'})" style="flex: 1;">+ OCT DOWN</button>
+</div>
+<hr style="border:1px solid #333; margin:10px 0;">
+        <label>FILE & BACKUP</label>
+        <button class="btn" onclick="exportJSON()" style="width:100%; margin-bottom:4px; background:#222;">SAVE TO FILE (JSON)</button>
+        <button class="btn" onclick="document.getElementById('importFile').click()" style="width:100%; margin-bottom:4px; background:#222;">LOAD FROM FILE</button>
+        <input type="file" id="importFile" style="display:none" accept=".json" onchange="importJSON(event)">
+        <hr style="border:1px solid #333; margin:10px 0;">
+        <label style="color:#00ffff">APP BUILDER</label>
+        <button class="btn" onclick="buildApp()" style="width:100%; background:#005555; color:#fff; margin-bottom:4px;">BUILD APP (HTML)</button>
         <hr style="border:1px solid #333; margin:10px 0;">
         <label>PRESETS</label>
         <select id="presetSelect" style="width:100%; margin-bottom:4px;"></select>
@@ -124,13 +162,28 @@
     <div id="canvas"></div>
     <div id="selection-box"></div>
 
-    <script>
+    <script id="mainScript">
         let midiAccess = null, midiOutput = null, isLayoutMode = false, activeUnit = null, globalOctave = 0, clipboard = [];
         const GRID = 20, PRESET_PREFIX = 'midi_v47_';
-        const canvas = document.getElementById('canvas'), selectionBox = document.getElementById('selection-box');
+        let canvas, selectionBox; 
+        // 要素を初期化する関数（閉じ忘れを修正）
+        function initElements() {
+            canvas = document.getElementById('canvas');
+            selectionBox = document.getElementById('selection-box');
+        }
+
+        // ページ読み込み時に一度実行しておく
+        initElements();
+
         let isSelecting = false, startX, startY;
         let historyStack = [], redoStack = [];
         const MAX_HISTORY = 50;
+
+        // 初期化時にURLパラメータをチェック（ビルド後のファイル用）
+        const urlParams = new URLSearchParams(window.location.search);
+        if(urlParams.has('mode') && urlParams.get('mode') === 'app') {
+            document.body.classList.add('app-mode');
+        }
 
         navigator.requestMIDIAccess().then(access => { midiAccess = access; refreshMidiDevices(); midiAccess.onstatechange = () => refreshMidiDevices(); });
         function refreshMidiDevices() {
@@ -196,7 +249,13 @@
                     }
                 };
             }
-            canvas.appendChild(unit);
+            // canvas変数を使わず、直接IDで指定して追加する
+const targetCanvas = document.getElementById('canvas');
+if (targetCanvas) {
+    targetCanvas.appendChild(unit);
+} else {
+    console.error("Canvas element not found during addUnit");
+}
             if (shouldSave) saveHistory();
             return unit;
         }
@@ -235,8 +294,26 @@
         }
 
         function updateSliderVisuals(unit, config) {
-            const orient = config.orient || 'v', thumbType = config.thumb || 'fader', s = unit.querySelector('.midi-slider'), vDisp = unit.querySelector('.cc-value-display'), sideA = unit.querySelector('.side-a'), sideB = unit.querySelector('.side-b');
-            s.className = `midi-slider ${orient === 'h' ? 'h-slider' : 'v-slider'} t-${thumbType}`;
+    const orient = config.orient || 'v', 
+          thumbType = config.thumb || 'fader', 
+          s = unit.querySelector('.midi-slider'), 
+          vDisp = unit.querySelector('.cc-value-display'), 
+          sideA = unit.querySelector('.side-a'), 
+          sideB = unit.querySelector('.side-b');
+
+    // --- ここを追加: 向きに合わせてユニット自体のサイズを自動調整 ---
+    const currentW = parseInt(unit.style.width);
+    const currentH = parseInt(unit.style.height);
+    if (orient === 'h' && currentH > currentW) {
+        unit.style.width = currentH + 'px';
+        unit.style.height = currentW + 'px';
+    } else if (orient === 'v' && currentW > currentH) {
+        unit.style.width = currentH + 'px';
+        unit.style.height = currentW + 'px';
+    }
+    // --------------------------------------------------------
+
+    s.className = `midi-slider ${orient === 'h' ? 'h-slider' : 'v-slider'} t-${thumbType}`;
             s.style.setProperty('--t-color', config.tColor || '#ffffff');
             [sideA, sideB, vDisp].forEach(el => { el.style.top = el.style.bottom = el.style.left = el.style.right = el.style.transform = 'auto'; el.style.width = el.style.height = 'auto'; });
             sideA.className = `ticks-group side-a ${orient === 'v' ? 'v-ticks' : 'h-ticks'}`; sideB.className = `ticks-group side-b ${orient === 'v' ? 'v-ticks' : 'h-ticks'}`;
@@ -310,21 +387,16 @@
             p.style.visibility = 'visible';
 
             document.getElementById('unitPanel').oninput = (ev) => {
-                const currentCfg = JSON.parse(activeUnit.dataset.config || '{}');
-                const oldOrient = currentCfg.orient, newOrient = document.getElementById('unitOrientInp').value;
-                if (u.dataset.type === 'slider' && ev.target.id === 'unitOrientInp' && oldOrient !== newOrient) {
-                    const temp = activeUnit.style.width; activeUnit.style.width = activeUnit.style.height; activeUnit.style.height = temp;
-                }
                 applyConfig(activeUnit, { 
                     label: document.getElementById('unitLabelInp').value, ch: document.getElementById('unitChInp').value, val: document.getElementById('unitValInp').value, 
-                    color: document.getElementById('unitColorInp').value, shape: document.getElementById('unitShapeInp').value, orient: newOrient, 
+                    color: document.getElementById('unitColorInp').value, shape: document.getElementById('unitShapeInp').value, orient: document.getElementById('unitOrientInp').value, 
                     thumb: document.getElementById('unitThumbInp').value, tColor: document.getElementById('unitThumbColorInp').value, showVal: document.getElementById('unitShowValInp').value 
                 });
                 saveHistory();
             };
         }
 
-        // --- 履歴 & コピペ ロジック ---
+        // --- 履歴 & ユーティリティ ---
         function saveHistory() {
             const data = serialize();
             if (historyStack.length > 0 && historyStack[historyStack.length - 1] === data) return;
@@ -333,50 +405,164 @@
             redoStack = [];
             localStorage.setItem('midi_designer_autosave', data);
         }
-        function undo() {
-            if (historyStack.length <= 1) return;
-            redoStack.push(historyStack.pop());
-            const prev = historyStack[historyStack.length - 1];
-            apply(prev); localStorage.setItem('midi_designer_autosave', prev);
-        }
-        function redo() {
-            if (redoStack.length === 0) return;
-            const next = redoStack.pop();
-            historyStack.push(next);
-            apply(next); localStorage.setItem('midi_designer_autosave', next);
-        }
-        function copySelected() {
-            clipboard = Array.from(document.querySelectorAll('.midi-unit.selected')).map(u => ({
-                type: u.dataset.type, w: u.style.width, h: u.style.height, x: parseInt(u.style.left), y: parseInt(u.style.top), val: u.dataset.val, config: JSON.parse(u.dataset.config || '{}')
-            }));
-        }
-        function pasteSelected() {
-            if (clipboard.length === 0) return;
-            deselectAll();
-            clipboard.forEach(u => {
-                const nu = addUnit(u.type, u.x + GRID, u.y + GRID, parseInt(u.w), parseInt(u.h), u.val, u.config);
-                nu.classList.add('selected');
-            });
-            saveHistory();
+        function undo() { if (historyStack.length <= 1) return; redoStack.push(historyStack.pop()); const prev = historyStack[historyStack.length - 1]; apply(prev); localStorage.setItem('midi_designer_autosave', prev); }
+        function redo() { if (redoStack.length === 0) return; const next = redoStack.pop(); historyStack.push(next); apply(next); localStorage.setItem('midi_designer_autosave', next); }
+        function copySelected() { clipboard = Array.from(document.querySelectorAll('.midi-unit.selected')).map(u => ({ type: u.dataset.type, w: u.style.width, h: u.style.height, x: parseInt(u.style.left), y: parseInt(u.style.top), val: u.dataset.val, config: JSON.parse(u.dataset.config || '{}') })); }
+        function pasteSelected() { if (clipboard.length === 0) return; deselectAll(); clipboard.forEach(u => { const nu = addUnit(u.type, u.x + GRID, u.y + GRID, parseInt(u.w), parseInt(u.h), u.val, u.config); nu.classList.add('selected'); }); saveHistory(); }
+        function serialize() { 
+    return JSON.stringify({ 
+        ch: document.getElementById('globalCh').value, 
+        units: Array.from(document.querySelectorAll('.midi-unit')).map(el => {
+            // スライダーの場合は現在のinputの値を正確に取得
+            const sVal = (el.dataset.type === 'slider') ? el.querySelector('.midi-slider').value : 0;
+            return {
+                type: el.dataset.type, 
+                x: parseInt(el.style.left), 
+                y: parseInt(el.style.top), 
+                w: parseInt(el.style.width), 
+                h: parseInt(el.style.height), 
+                val: el.dataset.val, 
+                sliderVal: sVal, 
+                config: JSON.parse(el.dataset.config || '{}')
+            };
+        }) 
+    }); 
+}
+        function apply(json) { 
+            const data = JSON.parse(json); 
+            
+            // ターゲットを確実に取得
+            const targetCanvas = document.getElementById('canvas');
+            if (!targetCanvas) return;
+
+            // キャンバスをクリア
+            targetCanvas.innerHTML = ''; 
+
+            // グローバルチャンネルの復元
+            if (document.getElementById('globalCh')) {
+                document.getElementById('globalCh').value = data.ch || 1;
+            }
+
+            // 各パーツ（ユニット）を順番に再生成
+            if (data.units) {
+                data.units.forEach(u => {
+                    const unit = addUnit(u.type, u.x, u.y, u.w, u.h, u.val, u.config, false);
+                    
+                    // スライダーの場合は値を復元
+                    if (u.type === 'slider' && unit) {
+                        const sld = unit.querySelector('.midi-slider');
+                        const vDisp = unit.querySelector('.cc-value-display');
+                        if (sld) sld.value = u.sliderVal || 0;
+                        if (vDisp) vDisp.innerText = u.sliderVal || 0;
+                    }
+                });
+            }
         }
 
-        function serialize() { return JSON.stringify({ ch: document.getElementById('globalCh').value, units: Array.from(document.querySelectorAll('.midi-unit')).map(el => ({ type: el.dataset.type, x: parseInt(el.style.left), y: parseInt(el.style.top), w: parseInt(el.style.width), h: parseInt(el.style.height), val: el.dataset.val, sliderVal: (el.dataset.type === 'slider') ? el.querySelector('.midi-slider').value : 0, config: JSON.parse(el.dataset.config || '{}') })) }); }
-        function apply(json) { const data = JSON.parse(json); canvas.innerHTML = ''; document.getElementById('globalCh').value = data.ch || 1; data.units.forEach(u => { const unit = addUnit(u.type, u.x, u.y, u.w, u.h, u.val, u.config, false); if (u.type === 'slider') { unit.querySelector('.midi-slider').value = u.sliderVal || 0; unit.querySelector('.cc-value-display').innerText = u.sliderVal || 0; } }); }
+        // --- エクスポート & インポート & ビルド ---
+        function exportJSON() {
+            const blob = new Blob([serialize()], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'midi_layout.json'; a.click();
+        }
+        function importJSON(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => { apply(ev.target.result); saveHistory(); };
+            reader.readAsText(file);
+        }
+        function buildApp() {
+    const layoutData = serialize();
+    const currentCh = document.getElementById('globalCh').value;
+    const currentOct = globalOctave;
+    const css = document.querySelector('style').innerHTML;
+    let js = document.getElementById('mainScript').innerHTML;
+    const safeData = layoutData.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+    const fullHTML = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MIDI App - Final</title>
+    <style>
+        ${css}
+        body.app-mode .menu-bar { display: flex !important; position: fixed; top: 0; left: 0; width: 100%; background: #000; border-bottom: 2px solid #00ffff; z-index: 9999; padding: 8px; box-sizing: border-box; }
+        body.app-mode #canvas { margin-top: 60px; height: calc(100vh - 60px); position: relative; display: block !important; }
+    </style>
+</head>
+<body class="app-mode" oncontextmenu="return false;">
+    <div class="menu-bar">
+        <div style="display:flex; align-items:center; gap:10px; width:100%;">
+            <span style="color:#00ffff; font-weight:bold; font-size:10px;">MIDI OUT:</span>
+            <select id="midiOutSelect" onchange="updateMidiOutput()" style="background:#111; color:#fff; border:1px solid #555; flex-grow:1;"></select>
+            <div id="octDisplay" style="background:#000; border:1px solid #555; padding:6px 12px; font-size:11px; color:#fff; font-weight:bold;">OCT: ${currentOct}</div>
+            <div style="display:none;"><input type="number" id="globalCh" value="${currentCh}"></div>
+        </div>
+    </div>
+    <div id="canvas"></div>
+    <div style="display:none;">
+        <div id="selection-box"></div>
+        <div id="unitPanel">
+            <select id="unitChInp"></select>
+            <input type="text" id="unitLabelInp"><input type="number" id="unitValInp"><input type="color" id="unitColorInp">
+            <select id="unitOrientInp"></select><select id="unitThumbInp"></select><input type="color" id="unitThumbColorInp">
+            <select id="unitShowValInp"></select><select id="unitShapeInp"></select>
+            <div id="padOnly"></div><div id="sliderOnly"></div>
+        </div>
+    </div>
+
+    <script>
+        // データと設定をグローバルに保持
+        window.dataStr = '${safeData}';
+        
+        // 1. オリジナルのJSを読み込む（エラー回避用のダミー要素があるため安全に実行されます）
+        ${js}
+
+        // 2. 出力アプリ専用の初期化処理
+        window.addEventListener('DOMContentLoaded', () => {
+            window.canvas = document.getElementById('canvas');
+            window.selectionBox = document.getElementById('selection-box');
+            
+            if (window.dataStr) {
+                // DOM構築後にパーツを生成
+                apply(window.dataStr);
+                globalOctave = ${currentOct};
+                if(document.getElementById('octDisplay')) {
+                    document.getElementById('octDisplay').innerText = "OCT: " + globalOctave;
+                }
+            }
+            
+            isLayoutMode = false;
+            document.body.classList.remove('layout-mode-active');
+            document.body.classList.add('app-mode');
+
+            if (navigator.requestMIDIAccess) {
+                navigator.requestMIDIAccess().then(access => { 
+                    midiAccess = access; 
+                    refreshMidiDevices(); 
+                });
+            }
+        });
+    <\/script>
+</body>
+</html>`;
+
+    const blob = new Blob([fullHTML], {type: 'text/html'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'midi_app.html';
+    a.click();
+}
+
         function savePreset() { const n = prompt("Name?"); if(!n) return; const d = serialize(); localStorage.setItem(PRESET_PREFIX + n, d); updatePresetList(); }
         function loadPreset() { const n = document.getElementById('presetSelect').value; const d = localStorage.getItem(n); if(d) { apply(d); saveHistory(); } }
         function deletePreset() { const n = document.getElementById('presetSelect').value; if(n && confirm("Delete?")) { localStorage.removeItem(n); updatePresetList(); } }
         function updatePresetList() { const s = document.getElementById('presetSelect'); s.innerHTML = Object.keys(localStorage).filter(k => k.startsWith(PRESET_PREFIX)).map(k => `<option value="${k}">${k.replace(PRESET_PREFIX,'')}</option>`).join(''); }
         function clearCanvas() { if(confirm("Clear?")) { canvas.innerHTML = ''; saveHistory(); } }
-
-        window.addEventListener('keydown', (e) => {
-            if (e.target.tagName === 'INPUT') return;
-            const isCmd = e.metaKey || e.ctrlKey;
-            if (isCmd && !e.shiftKey && e.key === 'z') { e.preventDefault(); undo(); }
-            if ((isCmd && e.shiftKey && e.key === 'z') || (isCmd && e.key === 'y')) { e.preventDefault(); redo(); }
-            if (isCmd && e.key === 'c') { copySelected(); }
-            if (isCmd && e.key === 'v') { pasteSelected(); }
-            if (isLayoutMode && (e.key === 'Delete' || e.key === 'Backspace')) { document.querySelectorAll('.midi-unit.selected').forEach(u => u.remove()); saveHistory(); }
-        });
 
         window.onload = () => {
             updatePresetList();
