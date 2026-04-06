@@ -181,9 +181,12 @@ body.app-mode #octDisplay {
 
         // 初期化時にURLパラメータをチェック（ビルド後のファイル用）
         const urlParams = new URLSearchParams(window.location.search);
-        if(urlParams.has('mode') && urlParams.get('mode') === 'app') {
-            document.body.classList.add('app-mode');
-        }
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+
+if((urlParams.has('mode') && urlParams.get('mode') === 'app') || isStandalone) {
+    document.body.classList.add('app-mode');
+    isLayoutMode = false; // 確実に編集モードをオフにする
+}
 
         navigator.requestMIDIAccess().then(access => { midiAccess = access; refreshMidiDevices(); midiAccess.onstatechange = () => refreshMidiDevices(); });
         function refreshMidiDevices() {
@@ -485,91 +488,66 @@ if (targetCanvas) {
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>MIDI Controller</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MIDI App - Final</title>
     <style>
         ${css}
-        /* モバイル最適化: 画面の揺れを防止 */
-        html, body { 
-            position: fixed; width: 100%; height: 100%; 
-            overflow: hidden; touch-action: none; 
-            background: #000; margin: 0; padding: 0;
-        }
-        #canvas { 
-            margin-top: 50px; height: calc(100vh - 50px); 
-            touch-action: none; 
-        }
-        /* 起動用オーバーレイ: シンプルなデザインに */
-        #boot-overlay {
-            position: fixed; top:0; left:0; width:100%; height:100%;
-            background: #000; z-index: 20000;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-        }
-        #boot-btn {
-            padding: 16px 40px; font-size: 18px; font-weight: bold;
-            background: transparent; color: #00ffff; border: 2px solid #00ffff; border-radius: 4px;
-            cursor: pointer; font-family: 'Courier New', Courier, monospace;
-        }
-        #boot-btn:active { background: #00ffff; color: #000; }
+        body.app-mode .menu-bar { display: flex !important; position: fixed; top: 0; left: 0; width: 100%; background: #000; border-bottom: 2px solid #00ffff; z-index: 9999; padding: 8px; box-sizing: border-box; }
+        body.app-mode #canvas { margin-top: 60px; height: calc(100vh - 60px); position: relative; display: block !important; }
     </style>
 </head>
-<body class="app-mode">
-    <div id="boot-overlay">
-        <button id="boot-btn" onclick="startApp()">CONNECT MIDI</button>
-    </div>
-
+<body class="app-mode" oncontextmenu="return false;">
     <div class="menu-bar">
-        <div style="display:flex; align-items:center; gap:12px; width:100%; max-width:600px; margin:0 auto;">
-            <select id="midiOutSelect" onchange="updateMidiOutput()" style="background:#222; color:#fff; border:1px solid #555; flex-grow:1; height:32px; font-size:14px;"></select>
-            <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:10px; color:#00ffff; font-weight:bold;">CH</span>
-                <select id="globalCh" onchange="globalCh = parseInt(this.value)" style="background:#000; color:#00ffff; border:1px solid #00ffff; font-size:14px; padding:2px;">
-                    ${Array.from({length:16}, (_,i)=> `<option value="${i+1}" ${i+1 == currentCh ? 'selected' : ''}>${i+1}</option>`).join('')}
-                </select>
-            </div>
-            <div id="octDisplay" style="background:#000; border:1px solid #555; padding:4px 8px; font-size:12px; color:#fff; min-width:60px; text-align:center; font-weight:bold;">OCT: ${currentOct}</div>
+        <div style="display:flex; align-items:center; gap:10px; width:100%;">
+            <span style="color:#00ffff; font-weight:bold; font-size:10px;">MIDI OUT:</span>
+            <select id="midiOutSelect" onchange="updateMidiOutput()" style="background:#111; color:#fff; border:1px solid #555; flex-grow:1;"></select>
+            <div id="octDisplay" style="background:#000; border:1px solid #555; padding:6px 12px; font-size:11px; color:#fff; font-weight:bold;">OCT: ${currentOct}</div>
+            <div style="display:none;"><input type="number" id="globalCh" value="${currentCh}"></div>
         </div>
     </div>
-    
     <div id="canvas"></div>
-
     <div style="display:none;">
-        <div id="selection-box"></div><div id="unitPanel"><select id="unitChInp"></select><input id="unitLabelInp"><input id="unitValInp"><input id="unitColorInp"><select id="unitOrientInp"></select><select id="unitThumbInp"></select><input id="unitThumbColorInp"><select id="unitShowValInp"></select><select id="unitShapeInp"></select><div id="padOnly"></div><div id="sliderOnly"></div></div><select id="presetSelect"></select>
+        <div id="selection-box"></div>
+        <div id="unitPanel">
+            <select id="unitChInp"></select>
+            <input type="text" id="unitLabelInp"><input type="number" id="unitValInp"><input type="color" id="unitColorInp">
+            <select id="unitOrientInp"></select><select id="unitThumbInp"></select><input type="color" id="unitThumbColorInp">
+            <select id="unitShowValInp"></select><select id="unitShapeInp"></select>
+            <div id="padOnly"></div><div id="sliderOnly"></div>
+        </div>
     </div>
 
     <script>
+        // データと設定をグローバルに保持
         window.dataStr = '${safeData}';
-        function updatePresetList() {}
-
+        
+        // 1. オリジナルのJSを読み込む（エラー回避用のダミー要素があるため安全に実行されます）
         ${js}
 
-        async function startApp() {
-            document.getElementById('boot-overlay').style.display = 'none';
-            if (!navigator.requestMIDIAccess) {
-                alert("Web MIDI is not supported on this browser.");
-                return;
-            }
-            try {
-                midiAccess = await navigator.requestMIDIAccess({ sysex: false });
-                refreshMidiDevices();
-                midiAccess.onstatechange = refreshMidiDevices;
-            } catch (e) {
-                alert("MIDI Access Denied. Please ensure you are using HTTPS.");
-            }
-        }
-
+        // 2. 出力アプリ専用の初期化処理
         window.addEventListener('DOMContentLoaded', () => {
             window.canvas = document.getElementById('canvas');
+            window.selectionBox = document.getElementById('selection-box');
+            
             if (window.dataStr) {
+                // DOM構築後にパーツを生成
                 apply(window.dataStr);
                 globalOctave = ${currentOct};
+                if(document.getElementById('octDisplay')) {
+                    document.getElementById('octDisplay').innerText = "OCT: " + globalOctave;
+                }
             }
-            // スライダー以外のスクロールを完全に禁止
-            document.addEventListener('touchmove', (e) => { 
-                if (e.target.tagName !== 'INPUT') e.preventDefault(); 
-            }, { passive: false });
+            
+            isLayoutMode = false;
+            document.body.classList.remove('layout-mode-active');
+            document.body.classList.add('app-mode');
+
+            if (navigator.requestMIDIAccess) {
+                navigator.requestMIDIAccess().then(access => { 
+                    midiAccess = access; 
+                    refreshMidiDevices(); 
+                });
+            }
         });
     <\/script>
 </body>
@@ -579,9 +557,10 @@ if (targetCanvas) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'midi_app_v1.html';
+    a.download = 'midi_app_final.html';
     a.click();
 }
+
         function savePreset() { const n = prompt("Name?"); if(!n) return; const d = serialize(); localStorage.setItem(PRESET_PREFIX + n, d); updatePresetList(); }
         function loadPreset() { const n = document.getElementById('presetSelect').value; const d = localStorage.getItem(n); if(d) { apply(d); saveHistory(); } }
         function deletePreset() { const n = document.getElementById('presetSelect').value; if(n && confirm("Delete?")) { localStorage.removeItem(n); updatePresetList(); } }
