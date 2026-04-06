@@ -556,24 +556,29 @@ if (targetCanvas) {
 
         ${js}
 
-        async function startApp() {
-            log("Initializing MIDI...");
-            document.getElementById('boot-overlay').style.display = 'none';
-            
-            if (!navigator.requestMIDIAccess) {
-                log("Error: Web MIDI not supported on this browser.");
-                return;
-            }
+       // 修正箇所：startApp 関数内
+async function startApp() {
+    log("Initializing MIDI...");
+    document.getElementById('boot-overlay').style.display = 'none';
+    
+    if (!navigator.requestMIDIAccess) {
+        // HTTPSでない場合にここに来ることが多いです
+        log("Error: Web MIDI not supported. Are you using HTTPS or Bluefy?");
+        alert("MIDI機能にはHTTPS通信、または専用ブラウザ(Bluefy等)が必要です。");
+        return;
+    }
 
-            try {
-                midiAccess = await navigator.requestMIDIAccess();
-                refreshMidiDevices();
-                midiAccess.onstatechange = refreshMidiDevices;
-                log("MIDI Started. Check device list.");
-            } catch (e) {
-                log("MIDI Access Denied: " + e.message);
-            }
-        }
+    try {
+        // sysexを使わない設定にすることで、許可のハードルを下げます
+        midiAccess = await navigator.requestMIDIAccess({ sysex: false }); 
+        refreshMidiDevices();
+        midiAccess.onstatechange = refreshMidiDevices;
+        log("MIDI Started! Device list updated.");
+    } catch (e) {
+        log("Permission Denied. Please use HTTPS.");
+        console.error(e);
+    }
+}
 
         window.addEventListener('DOMContentLoaded', () => {
             window.canvas = document.getElementById('canvas');
