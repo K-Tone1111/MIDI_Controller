@@ -481,53 +481,51 @@ if (targetCanvas) {
     let js = document.getElementById('mainScript').innerHTML;
     const safeData = layoutData.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
+    // PWA用の設定（マニフェスト）をデータURIで作成
+    const manifest = {
+        name: "My MIDI Controller",
+        short_name: "MIDI App",
+        start_url: ".",
+        display: "standalone",
+        background_color: "#000000",
+        theme_color: "#00ffff",
+        icons: [{ src: "https://cdn-icons-png.flaticon.com/512/3659/3659744.png", sizes: "512x512", type: "image/png" }]
+    };
+    const manifestDataUri = "data:application/manifest+json;base64," + btoa(JSON.stringify(manifest));
+
     const fullHTML = `<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>MIDI App - Mobile Pro</title>
+    <link rel="manifest" href="${manifestDataUri}">
+    <meta name="theme-color" content="#00ffff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>MIDI App - PWA</title>
     <style>
         ${css}
-        /* モバイル専用の強力なリセット */
-        html, body { 
-            position: fixed; width: 100%; height: 100%; 
-            overflow: hidden; touch-action: none; 
-            background: #000; margin: 0; padding: 0;
-        }
-        #canvas { 
-            margin-top: 60px; height: calc(100vh - 60px); 
-            display: block !important; touch-action: none; 
-        }
-        .midi-unit, .midi-slider, input[type=range] { 
-            touch-action: none !important; 
-        }
+        html, body { position: fixed; width: 100%; height: 100%; overflow: hidden; touch-action: none; background: #000; margin: 0; }
+        .midi-unit, .midi-slider, input[type=range] { touch-action: none !important; }
         
-        /* 起動用オーバーレイ */
         #boot-overlay {
             position: fixed; top:0; left:0; width:100%; height:100%;
-            background: rgba(0,0,0,0.9); z-index: 20000;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: #000; z-index: 20000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
         }
         #boot-btn {
-            padding: 20px 40px; font-size: 20px; font-weight: bold;
+            padding: 20px 40px; font-size: 18px; font-weight: bold;
             background: #00ffff; color: #000; border: none; border-radius: 50px;
-            box-shadow: 0 0 20px #00ffff;
-        }
-        
-        /* デバッグログ (画面下部) */
-        #debug-log {
-            position: fixed; bottom: 0; left: 0; width: 100%; 
-            background: rgba(0,0,0,0.7); color: #0f0; font-size: 9px;
-            pointer-events: none; max-height: 40px; overflow: hidden; z-index: 15000;
+            box-shadow: 0 0 20px #00ffff; margin-bottom: 20px;
         }
     </style>
 </head>
 <body class="app-mode">
     <div id="boot-overlay">
-        <div style="color:#00ffff; margin-bottom:20px; font-family:monospace;">MIDI SYSTEM READY</div>
+        <div style="color:#00ffff; margin-bottom:20px; font-family:monospace; padding:20px;">
+            <p>1. 接続を確認してください</p>
+            <p style="font-size:12px; color:#888;">※認識されない場合は「ホーム画面に追加」して<br>アプリとして起動してください</p>
+        </div>
         <button id="boot-btn" onclick="startApp()">TAP TO START</button>
-        <div style="color:#555; margin-top:20px; font-size:10px;">Connect your MIDI device first</div>
     </div>
 
     <div class="menu-bar">
@@ -535,7 +533,7 @@ if (targetCanvas) {
             <select id="midiOutSelect" onchange="updateMidiOutput()" style="background:#222; color:#fff; border:1px solid #555; flex-grow:1; height:36px; font-size:14px;"></select>
             <div style="display:flex; align-items:center; gap:4px;">
                 <span style="font-size:10px; color:#00ffff;">CH</span>
-                <select id="globalCh" style="background:#000; color:#00ffff; border:1px solid #00ffff; font-size:14px; padding:4px;">
+                <select id="globalCh" onchange="globalCh = parseInt(this.value)" style="background:#000; color:#00ffff; border:1px solid #00ffff; font-size:14px; padding:4px;">
                     ${Array.from({length:16}, (_,i)=> `<option value="${i+1}" ${i+1 == currentCh ? 'selected' : ''}>${i+1}</option>`).join('')}
                 </select>
             </div>
@@ -543,56 +541,40 @@ if (targetCanvas) {
         </div>
     </div>
     <div id="canvas"></div>
-    <div id="debug-log">Log: System waiting...</div>
+    <div id="debug-log" style="position:fixed; bottom:0; width:100%; color:#0f0; font-size:10px; background:rgba(0,0,0,0.5); pointer-events:none;"></div>
 
-    <div style="display:none;"><div id="selection-box"></div><div id="unitPanel"><select id="unitChInp"></select><input type="text" id="unitLabelInp"><input type="number" id="unitValInp"><input type="color" id="unitColorInp"><select id="unitOrientInp"></select><select id="unitThumbInp"></select><input type="color" id="unitThumbColorInp"><select id="unitShowValInp"></select><select id="unitShapeInp"></select><div id="padOnly"></div><div id="sliderOnly"></div></div><select id="presetSelect"></select></div>
+    <div style="display:none;"><div id="selection-box"></div><div id="unitPanel"><select id="unitChInp"></select><input id="unitLabelInp"><input id="unitValInp"><input id="unitColorInp"><select id="unitOrientInp"></select><select id="unitThumbInp"></select><input id="unitThumbColorInp"><select id="unitShowValInp"></select><select id="unitShapeInp"></select><div id="padOnly"></div><div id="sliderOnly"></div></div><select id="presetSelect"></select></div>
 
     <script>
         window.dataStr = '${safeData}';
-        const log = (msg) => { document.getElementById('debug-log').innerText = "Log: " + msg; console.log(msg); };
-        
-        // エラー防止用のダミー関数
+        const log = (msg) => { document.getElementById('debug-log').innerText = msg; };
         function updatePresetList() {}
 
         ${js}
 
-       // 修正箇所：startApp 関数内
-async function startApp() {
-    log("Initializing MIDI...");
-    document.getElementById('boot-overlay').style.display = 'none';
-    
-    if (!navigator.requestMIDIAccess) {
-        // HTTPSでない場合にここに来ることが多いです
-        log("Error: Web MIDI not supported. Are you using HTTPS or Bluefy?");
-        alert("MIDI機能にはHTTPS通信、または専用ブラウザ(Bluefy等)が必要です。");
-        return;
-    }
-
-    try {
-        // sysexを使わない設定にすることで、許可のハードルを下げます
-        midiAccess = await navigator.requestMIDIAccess({ sysex: false }); 
-        refreshMidiDevices();
-        midiAccess.onstatechange = refreshMidiDevices;
-        log("MIDI Started! Device list updated.");
-    } catch (e) {
-        log("Permission Denied. Please use HTTPS.");
-        console.error(e);
-    }
-}
+        async function startApp() {
+            document.getElementById('boot-overlay').style.display = 'none';
+            if (!navigator.requestMIDIAccess) {
+                alert("MIDI非対応ブラウザです。ChromeかBluefyをお試しください。");
+                return;
+            }
+            try {
+                midiAccess = await navigator.requestMIDIAccess({ sysex: false });
+                refreshMidiDevices();
+                midiAccess.onstatechange = refreshMidiDevices;
+                log("MIDI System Active");
+            } catch (e) {
+                alert("MIDIアクセスが拒否されました。HTTPS環境か、ホーム画面に追加して起動してください。");
+            }
+        }
 
         window.addEventListener('DOMContentLoaded', () => {
             window.canvas = document.getElementById('canvas');
             if (window.dataStr) {
                 apply(window.dataStr);
                 globalOctave = ${currentOct};
-                if(document.getElementById('octDisplay')) document.getElementById('octDisplay').innerText = "OCT: " + globalOctave;
             }
-            
-            // スマホでのスライダー干渉を力技で防ぐ
-            document.addEventListener('touchmove', (e) => {
-                if (e.target.tagName === 'INPUT') return; // スライダー自体は動かす
-                e.preventDefault(); // それ以外（スクロールなど）は禁止
-            }, { passive: false });
+            document.addEventListener('touchmove', (e) => { if (e.target.tagName !== 'INPUT') e.preventDefault(); }, { passive: false });
         });
     <\/script>
 </body>
