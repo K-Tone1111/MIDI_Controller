@@ -264,17 +264,19 @@ if (targetCanvas) {
         }
 
         function handleMidiAction(unit, state) {
-            if (isLayoutMode || !midiOutput) return;
-            const type = unit.dataset.type;
-            if (type === 'pad') {
-                const note = parseInt(unit.dataset.val) + (globalOctave * 12);
-                sendMidiFromUnit(unit, state === 'down' ? 0x90 : 0x80, note, state === 'down' ? 100 : 0);
-            } else if (state === 'down') {
-                if (type === 'oct-up') globalOctave++;
-                if (type === 'oct-down') globalOctave--;
-                document.getElementById('octDisplay').innerText = `OCT: ${globalOctave}`;
-            }
-        }
+    if (isLayoutMode || !midiOutput) return;
+    const type = unit.dataset.type;
+    
+    if (type === 'pad') {
+        const note = parseInt(unit.dataset.val) + (globalOctave * 12);
+        // pointerleaveを無視し、pointerupのみでNote Offを送るように調整可能
+        sendMidiFromUnit(unit, state === 'down' ? 0x90 : 0x80, note, state === 'down' ? 100 : 0);
+    } else if (state === 'down') {
+        if (type === 'oct-up') globalOctave++;
+        if (type === 'oct-down') globalOctave--;
+        if(document.getElementById('octDisplay')) document.getElementById('octDisplay').innerText = `OCT: ${globalOctave}`;
+    }
+}
 
         function sendMidiFromUnit(unit, s, d1, d2) {
             const cfg = JSON.parse(unit.dataset.config || '{}');
@@ -488,64 +490,47 @@ if (targetCanvas) {
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>MIDI App - Final</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>MIDI Player</title>
     <style>
         ${css}
-        body.app-mode .menu-bar { display: flex !important; position: fixed; top: 0; left: 0; width: 100%; background: #000; border-bottom: 2px solid #00ffff; z-index: 9999; padding: 8px; box-sizing: border-box; }
-        body.app-mode #canvas { margin-top: 60px; height: calc(100vh - 60px); position: relative; display: block !important; }
+        /* 出力アプリ用のヘッダー調整 */
+        .app-menu {
+            position: fixed; top: 0; left: 0; width: 100%; height: 50px;
+            background: #000; border-bottom: 2px solid #00ffff;
+            display: flex; align-items: center; padding: 0 10px; box-sizing: border-box; z-index: 10000;
+            gap: 10px;
+        }
+        #canvas { margin-top: 50px; height: calc(100vh - 50px) !important; }
     </style>
 </head>
-<body class="app-mode" oncontextmenu="return false;">
-    <div class="menu-bar">
-        <div style="display:flex; align-items:center; gap:10px; width:100%;">
-            <span style="color:#00ffff; font-weight:bold; font-size:10px;">MIDI OUT:</span>
-            <select id="midiOutSelect" onchange="updateMidiOutput()" style="background:#111; color:#fff; border:1px solid #555; flex-grow:1;"></select>
-            <div id="octDisplay" style="background:#000; border:1px solid #555; padding:6px 12px; font-size:11px; color:#fff; font-weight:bold;">OCT: ${currentOct}</div>
-            <div style="display:none;"><input type="number" id="globalCh" value="${currentCh}"></div>
+<body class="app-mode">
+    <div class="app-menu">
+        <select id="midiOutSelect" onchange="updateMidiOutput()" style="background:#222; color:#fff; flex-grow:1; height:30px;"></select>
+        <div style="display:flex; align-items:center; gap:5px;">
+            <span style="font-size:10px; color:#00ffff;">CH</span>
+            <select id="globalCh" onchange="document.getElementById('globalChDisp').innerText = this.value" style="background:#000; color:#00ffff; border:1px solid #00ffff;">
+                ${Array.from({length:16}, (_,i)=> `<option value="${i+1}" ${i+1 == currentCh ? 'selected' : ''}>${i+1}</option>`).join('')}
+            </select>
         </div>
+        <div id="octDisplay" style="color:#fff; font-size:12px; font-weight:bold; min-width:50px;">OCT: ${currentOct}</div>
     </div>
     <div id="canvas"></div>
-    <div style="display:none;">
-        <div id="selection-box"></div>
-        <div id="unitPanel">
-            <select id="unitChInp"></select>
-            <input type="text" id="unitLabelInp"><input type="number" id="unitValInp"><input type="color" id="unitColorInp">
-            <select id="unitOrientInp"></select><select id="unitThumbInp"></select><input type="color" id="unitThumbColorInp">
-            <select id="unitShowValInp"></select><select id="unitShapeInp"></select>
-            <div id="padOnly"></div><div id="sliderOnly"></div>
-        </div>
-    </div>
+    <div style="display:none;"><div id="selection-box"></div><div id="unitPanel"></div><select id="presetSelect"></select></div>
 
     <script>
-        // データと設定をグローバルに保持
         window.dataStr = '${safeData}';
-        
-        // 1. オリジナルのJSを読み込む（エラー回避用のダミー要素があるため安全に実行されます）
         ${js}
-
-        // 2. 出力アプリ専用の初期化処理
         window.addEventListener('DOMContentLoaded', () => {
             window.canvas = document.getElementById('canvas');
-            window.selectionBox = document.getElementById('selection-box');
-            
-            if (window.dataStr) {
-                // DOM構築後にパーツを生成
-                apply(window.dataStr);
+            if (window.dataStr) { 
+                apply(window.dataStr); 
                 globalOctave = ${currentOct};
-                if(document.getElementById('octDisplay')) {
-                    document.getElementById('octDisplay').innerText = "OCT: " + globalOctave;
-                }
             }
-            
-            isLayoutMode = false;
-            document.body.classList.remove('layout-mode-active');
-            document.body.classList.add('app-mode');
-
             if (navigator.requestMIDIAccess) {
                 navigator.requestMIDIAccess().then(access => { 
-                    midiAccess = access; 
-                    refreshMidiDevices(); 
+                    midiAccess = access; refreshMidiDevices(); 
+                    midiAccess.onstatechange = refreshMidiDevices;
                 });
             }
         });
@@ -554,10 +539,9 @@ if (targetCanvas) {
 </html>`;
 
     const blob = new Blob([fullHTML], {type: 'text/html'});
-    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = 'midi_app_final.html';
+    a.href = URL.createObjectURL(blob);
+    a.download = 'midi_custom_app.html';
     a.click();
 }
 
