@@ -485,39 +485,49 @@ if (targetCanvas) {
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>MIDI App - Mobile Ready</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>MIDI App - Final</title>
     <style>
         ${css}
-        /* スマホ向け修正: スライダーがスクロールに負けないようにする */
-        .midi-slider { touch-action: none !important; }
+        /* スマホ向け強制上書き */
+        * { -webkit-tap-highlight-color: transparent; }
+        html, body { overflow: hidden; position: fixed; width: 100%; height: 100%; }
         
+        .midi-unit { touch-action: none !important; }
+        .midi-slider input[type=range] { 
+            touch-action: none !important; 
+            cursor: pointer;
+            z-index: 10;
+        }
+
         body.app-mode .menu-bar { 
             display: flex !important; 
             position: fixed; top: 0; left: 0; width: 100%; 
-            background: #000; border-bottom: 2px solid #00ffff; 
-            z-index: 9999; padding: 8px; box-sizing: border-box;
+            background: #111; border-bottom: 1px solid #00ffff; 
+            z-index: 10000; padding: 8px; box-sizing: border-box;
             height: 60px; align-items: center;
         }
-        body.app-mode #canvas { margin-top: 60px; height: calc(100vh - 60px); position: relative; display: block !important; }
-        
-        /* チャンネル選択の見た目 */
-        .ch-select { background: #111; color: #00ffff; border: 1px solid #00ffff; font-size: 11px; padding: 4px; border-radius: 4px; }
+        body.app-mode #canvas { 
+            margin-top: 60px; 
+            height: calc(100vh - 60px); 
+            position: relative; 
+            display: block !important; 
+            touch-action: none !important;
+        }
+        .ch-select { background: #000; color: #00ffff; border: 1px solid #00ffff; font-size: 14px; padding: 4px; }
     </style>
 </head>
-<body class="app-mode" oncontextmenu="return false;">
-    <div class="menu-bar">
-        <div style="display:flex; align-items:center; gap:8px; width:100%; overflow-x: auto;">
-            <select id="midiOutSelect" onchange="updateMidiOutput()" style="background:#111; color:#fff; border:1px solid #555; flex-grow:1; min-width:100px; font-size:12px;"></select>
-            
+<body class="app-mode">
+    <div class="menu-bar" id="appHeader">
+        <div style="display:flex; align-items:center; gap:8px; width:100%;">
+            <select id="midiOutSelect" onchange="updateMidiOutput()" style="background:#222; color:#fff; border:1px solid #555; flex-grow:1; height:36px; font-size:14px;"></select>
             <div style="display:flex; align-items:center; gap:4px;">
-                <span style="font-size:9px; color:#00ffff;">CH:</span>
-                <select id="globalCh" class="ch-select" onchange="saveToStorageLocal()">
+                <span style="font-size:10px; color:#00ffff;">CH</span>
+                <select id="globalCh" class="ch-select">
                     ${Array.from({length:16}, (_,i)=> `<option value="${i+1}" ${i+1 == currentCh ? 'selected' : ''}>${i+1}</option>`).join('')}
                 </select>
             </div>
-
-            <div id="octDisplay" style="background:#000; border:1px solid #555; padding:4px 8px; font-size:11px; color:#fff; white-space:nowrap;">OCT: ${currentOct}</div>
+            <div id="octDisplay" style="background:#000; border:1px solid #555; padding:6px; font-size:12px; color:#fff; min-width:50px; text-align:center;">OCT: ${currentOct}</div>
         </div>
     </div>
     <div id="canvas"></div>
@@ -529,33 +539,34 @@ if (targetCanvas) {
 
     <script>
         window.dataStr = '${safeData}';
-        // スマホ用: チャンネル変更時に一応値を保持するダミー関数
-        function saveToStorageLocal() { console.log("Global CH changed to:", document.getElementById('globalCh').value); }
-        
         ${js}
+
+        // MIDI初期化の強化
+        async function initMidiMobile() {
+            if (!navigator.requestMIDIAccess) return;
+            try {
+                midiAccess = await navigator.requestMIDIAccess();
+                refreshMidiDevices();
+                midiAccess.onstatechange = refreshMidiDevices;
+                console.log("MIDI Initialized");
+            } catch (e) { console.error("MIDI access denied", e); }
+        }
 
         window.addEventListener('DOMContentLoaded', () => {
             window.canvas = document.getElementById('canvas');
             if (window.dataStr) {
                 apply(window.dataStr);
                 globalOctave = ${currentOct};
-                if(document.getElementById('octDisplay')) document.getElementById('octDisplay').innerText = "OCT: " + globalOctave;
+                const disp = document.getElementById('octDisplay');
+                if(disp) disp.innerText = "OCT: " + globalOctave;
             }
-            document.body.classList.add('app-mode');
 
-            const initMIDI = () => {
-                if (navigator.requestMIDIAccess) {
-                    navigator.requestMIDIAccess().then(access => { 
-                        midiAccess = access; 
-                        refreshMidiDevices();
-                        midiAccess.onstatechange = () => refreshMidiDevices();
-                    });
-                }
-            };
-
-            // スマホ対策: 最初のクリックでMIDIを強制起動
-            window.addEventListener('pointerdown', initMIDI, { once: true });
-            initMIDI(); // PC用
+            // 初回タッチでMIDIを有効化する
+            document.body.addEventListener('touchstart', initMidiMobile, { once: true });
+            document.body.addEventListener('mousedown', initMidiMobile, { once: true });
+            
+            // 定期的にデバイスリストを更新（スマホの切断対策）
+            setInterval(() => { if(midiAccess) refreshMidiDevices(); }, 3000);
         });
     <\/script>
 </body>
@@ -568,7 +579,6 @@ if (targetCanvas) {
     a.download = 'midi_app_final.html';
     a.click();
 }
-
         function savePreset() { const n = prompt("Name?"); if(!n) return; const d = serialize(); localStorage.setItem(PRESET_PREFIX + n, d); updatePresetList(); }
         function loadPreset() { const n = document.getElementById('presetSelect').value; const d = localStorage.getItem(n); if(d) { apply(d); saveHistory(); } }
         function deletePreset() { const n = document.getElementById('presetSelect').value; if(n && confirm("Delete?")) { localStorage.removeItem(n); updatePresetList(); } }
