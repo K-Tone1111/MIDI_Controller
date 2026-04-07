@@ -181,12 +181,9 @@ body.app-mode #octDisplay {
 
         // 初期化時にURLパラメータをチェック（ビルド後のファイル用）
         const urlParams = new URLSearchParams(window.location.search);
-const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-
-if((urlParams.has('mode') && urlParams.get('mode') === 'app') || isStandalone) {
-    document.body.classList.add('app-mode');
-    isLayoutMode = false; // 確実に編集モードをオフにする
-}
+        if(urlParams.has('mode') && urlParams.get('mode') === 'app') {
+            document.body.classList.add('app-mode');
+        }
 
         navigator.requestMIDIAccess().then(access => { midiAccess = access; refreshMidiDevices(); midiAccess.onstatechange = () => refreshMidiDevices(); });
         function refreshMidiDevices() {
@@ -264,19 +261,17 @@ if (targetCanvas) {
         }
 
         function handleMidiAction(unit, state) {
-    if (isLayoutMode || !midiOutput) return;
-    const type = unit.dataset.type;
-    
-    if (type === 'pad') {
-        const note = parseInt(unit.dataset.val) + (globalOctave * 12);
-        // pointerleaveを無視し、pointerupのみでNote Offを送るように調整可能
-        sendMidiFromUnit(unit, state === 'down' ? 0x90 : 0x80, note, state === 'down' ? 100 : 0);
-    } else if (state === 'down') {
-        if (type === 'oct-up') globalOctave++;
-        if (type === 'oct-down') globalOctave--;
-        if(document.getElementById('octDisplay')) document.getElementById('octDisplay').innerText = `OCT: ${globalOctave}`;
-    }
-}
+            if (isLayoutMode || !midiOutput) return;
+            const type = unit.dataset.type;
+            if (type === 'pad') {
+                const note = parseInt(unit.dataset.val) + (globalOctave * 12);
+                sendMidiFromUnit(unit, state === 'down' ? 0x90 : 0x80, note, state === 'down' ? 100 : 0);
+            } else if (state === 'down') {
+                if (type === 'oct-up') globalOctave++;
+                if (type === 'oct-down') globalOctave--;
+                document.getElementById('octDisplay').innerText = `OCT: ${globalOctave}`;
+            }
+        }
 
         function sendMidiFromUnit(unit, s, d1, d2) {
             const cfg = JSON.parse(unit.dataset.config || '{}');
@@ -491,46 +486,72 @@ if (targetCanvas) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>MIDI Player</title>
+    <title>MIDI App - Final</title>
     <style>
         ${css}
-        /* 出力アプリ用のヘッダー調整 */
-        .app-menu {
-            position: fixed; top: 0; left: 0; width: 100%; height: 50px;
-            background: #000; border-bottom: 2px solid #00ffff;
-            display: flex; align-items: center; padding: 0 10px; box-sizing: border-box; z-index: 10000;
-            gap: 10px;
-        }
-        #canvas { margin-top: 50px; height: calc(100vh - 50px) !important; }
+        /* 演奏モード専用のヘッダー調整 */
+        body.app-mode .menu-bar { display: flex !important; position: fixed; top: 0; left: 0; width: 100%; background: #000; border-bottom: 2px solid #555; z-index: 9999; padding: 8px; box-sizing: border-box; align-items: center; gap: 10px; }
+        body.app-mode #canvas { margin-top: 60px; height: calc(100vh - 60px); position: relative; display: block !important; }
     </style>
 </head>
-<body class="app-mode">
-    <div class="app-menu">
-        <select id="midiOutSelect" onchange="updateMidiOutput()" style="background:#222; color:#fff; flex-grow:1; height:30px;"></select>
-        <div style="display:flex; align-items:center; gap:5px;">
-            <span style="font-size:10px; color:#00ffff;">CH</span>
-            <select id="globalCh" onchange="document.getElementById('globalChDisp').innerText = this.value" style="background:#000; color:#00ffff; border:1px solid #00ffff;">
-                ${Array.from({length:16}, (_,i)=> `<option value="${i+1}" ${i+1 == currentCh ? 'selected' : ''}>${i+1}</option>`).join('')}
-            </select>
-        </div>
-        <div id="octDisplay" style="color:#fff; font-size:12px; font-weight:bold; min-width:50px;">OCT: ${currentOct}</div>
+<body class="app-mode" oncontextmenu="return false;">
+    <div class="menu-bar">
+        <span style="color:#888; font-size:10px; font-weight:bold;">MIDI OUT:</span>
+        <select id="midiOutSelect" onchange="updateMidiOutput()" style="background:#111; color:#fff; border:1px solid #555; flex-grow:1; font-size:12px; height:28px;"></select>
+        
+        <span style="color:#888; font-size:10px; font-weight:bold; margin-left:5px;">CH:</span>
+        <select id="globalCh" style="background:#111; color:#fff; border:1px solid #555; font-size:12px; height:28px; width:50px;">
+            ${Array.from({length:16}, (_,i)=>`<option value="${i+1}" ${i+1 == currentCh ? 'selected':''}>${i+1}</option>`).join('')}
+        </select>
+
+        <div id="octDisplay" style="background:#000; border:1px solid #555; padding:4px 8px; font-size:11px; color:#fff; font-weight:bold; white-space:nowrap;">OCT: ${currentOct}</div>
     </div>
+
     <div id="canvas"></div>
-    <div style="display:none;"><div id="selection-box"></div><div id="unitPanel"></div><select id="presetSelect"></select></div>
+
+    <div style="display:none;">
+        <div id="selection-box"></div>
+        <div id="unitPanel">
+            <input type="text" id="unitLabelInp"><input type="number" id="unitChInp"><input type="number" id="unitValInp">
+            <input type="color" id="unitColorInp"><select id="unitShapeInp"></select>
+            <select id="unitOrientInp"></select><select id="unitThumbInp"></select><select id="unitShowValInp"></select>
+            <div id="padOnly"></div><div id="sliderOnly"></div>
+        </div>
+        <select id="presetSelect"></select>
+    </div>
 
     <script>
+        // 1. データを保持
         window.dataStr = '${safeData}';
+        window.isAppBuild = true; // 元のonloadをスキップさせるフラグ
+
+        // 2. 元のJSコードを定義（まだ実行はされない）
         ${js}
-        window.addEventListener('DOMContentLoaded', () => {
+
+        // 3. 全ての準備が整ってから初期化
+        window.addEventListener('load', () => {
+            // グローバル変数の紐付け直し
             window.canvas = document.getElementById('canvas');
-            if (window.dataStr) { 
-                apply(window.dataStr); 
+            
+            // パーツ復元
+            if (window.dataStr) {
+                apply(window.dataStr);
                 globalOctave = ${currentOct};
+                if(document.getElementById('octDisplay')) {
+                    document.getElementById('octDisplay').innerText = "OCT: " + globalOctave;
+                }
             }
+
+            // モード設定
+            isLayoutMode = false;
+            document.body.classList.remove('layout-mode-active');
+            document.body.classList.add('app-mode');
+
+            // MIDI初期化
             if (navigator.requestMIDIAccess) {
                 navigator.requestMIDIAccess().then(access => { 
-                    midiAccess = access; refreshMidiDevices(); 
-                    midiAccess.onstatechange = refreshMidiDevices;
+                    midiAccess = access; 
+                    refreshMidiDevices(); 
                 });
             }
         });
@@ -539,9 +560,10 @@ if (targetCanvas) {
 </html>`;
 
     const blob = new Blob([fullHTML], {type: 'text/html'});
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'midi_custom_app.html';
+    a.href = url;
+    a.download = 'midi_app.html';
     a.click();
 }
 
@@ -551,11 +573,48 @@ if (targetCanvas) {
         function updatePresetList() { const s = document.getElementById('presetSelect'); s.innerHTML = Object.keys(localStorage).filter(k => k.startsWith(PRESET_PREFIX)).map(k => `<option value="${k}">${k.replace(PRESET_PREFIX,'')}</option>`).join(''); }
         function clearCanvas() { if(confirm("Clear?")) { canvas.innerHTML = ''; saveHistory(); } }
 
+// キーボードショートカット (Copy, Paste, Undo, Redo)
+window.addEventListener('keydown', (e) => {
+    // 編集モード中、かつ入力欄にフォーカスがない時のみ実行
+    if (!isLayoutMode || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    const isCmd = e.metaKey || e.ctrlKey;
+
+    if (isCmd && e.key === 'c') {
+        e.preventDefault();
+        copySelected();
+    }
+    if (isCmd && e.key === 'v') {
+        e.preventDefault();
+        pasteSelected();
+    }
+    if (isCmd && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+            redo();
+        } else {
+            undo();
+        }
+    }
+    if (isCmd && e.key === 'y') {
+        e.preventDefault();
+        redo();
+    }
+});
+
         window.onload = () => {
-            updatePresetList();
-            const saved = localStorage.getItem('midi_designer_autosave');
-            if (saved) { apply(saved); historyStack.push(saved); } else { historyStack.push(serialize()); }
-        };
+    updatePresetList();
+    // アプリビルド版でない場合のみ、ローカルストレージから読み込む
+    if (!window.isAppBuild) {
+        const saved = localStorage.getItem('midi_designer_autosave');
+        if (saved) { 
+            apply(saved); 
+            historyStack.push(saved); 
+        } else {
+            historyStack.push(serialize());
+        }
+    }
+};
     </script>
 </body>
 </html>
